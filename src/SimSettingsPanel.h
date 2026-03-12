@@ -5,13 +5,21 @@ class CSimSettingsPanel : public CFormView
 {
     DECLARE_DYNCREATE(CSimSettingsPanel)
 
-public:
+protected:
     CSimSettingsPanel();
     virtual ~CSimSettingsPanel();
 
 #ifdef AFX_DESIGN_TIME
-    enum { IDD = IDD_FORMVIEW_SIM_SETTINGS };
+    enum { IDD = 107 }; // Hardcoded to match RC file IDD_FORMVIEW_SIM_SETTINGS
 #endif
+
+    virtual void OnDraw(CDC* pDC) {}
+
+public:
+    BOOL CreateView(CWnd* pParent, UINT nID, CCreateContext* pContext)
+    {
+        return Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_BORDER, CRect(0,0,0,0), pParent, nID, pContext);
+    }
 
 protected:
     virtual void DoDataExchange(CDataExchange* pDX);
@@ -30,17 +38,26 @@ protected:
     CButton     m_checkBloodlust;
     CButton     m_checkPotion;
 
+    CComboBox   m_comboTempEnchant;
+    CButton     m_checkCrucibleViolence;
+    CButton     m_checkCrucibleSustenance;
+    CButton     m_checkCruciblePredation;
+
     // Data
     CString m_strFightStyle;
     int     m_nDuration;
     int     m_nIterations;
-    int     m_nTargetCount;
+    CString m_strTargetCount;
     BOOL    m_bFlask;
     BOOL    m_bFood;
     BOOL    m_bRune;
     BOOL    m_bAugment;
     BOOL    m_bBloodlust;
     BOOL    m_bPotion;
+    CString m_strTempEnchant;
+    BOOL    m_bCrucibleViolence;
+    BOOL    m_bCrucibleSustenance;
+    BOOL    m_bCruciblePredation;
 
     DECLARE_MESSAGE_MAP()
 
@@ -55,7 +72,7 @@ public:
     CString GetFightStyle() const { return m_strFightStyle; }
     int GetDuration() const { return m_nDuration; }
     int GetIterations() const { return m_nIterations; }
-    int GetTargetCount() const { return m_nTargetCount; }
+    int GetTargetCount() const { return _ttoi(m_strTargetCount); }
     BOOL GetUseFlask() const { return m_bFlask; }
     BOOL GetUseFood() const { return m_bFood; }
     BOOL GetUseRune() const { return m_bRune; }

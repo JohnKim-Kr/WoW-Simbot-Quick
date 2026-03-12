@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "PresetManagerDlg.h"
 #include "SettingsManager.h"

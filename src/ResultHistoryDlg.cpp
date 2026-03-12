@@ -1,7 +1,9 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "ResultHistoryDlg.h"
 #include "ResultHistoryManager.h"
+#include "MainFrame.h"
+#include "CharacterData.h"
 #include "resource.h"
 
 IMPLEMENT_DYNAMIC(CResultHistoryDlg, CDialogEx)
@@ -71,39 +73,6 @@ BOOL CResultHistoryDlg::OnInitDialog()
 	return TRUE;
 }
 
-void CResultHistoryDlg::RefreshResultList()
-{
-	m_listResults.DeleteAllItems();
-
-	CResultHistoryManager* pMgr = GetResultHistoryManager();
-	if (!pMgr)
-		return;
-
-	const auto& results = pMgr->GetAllResults();
-	for (int i = 0; i < pMgr->GetResultCount(); ++i)
-	{
-		const auto& result = results[i];
-		const auto& build = result.GetBuildInfo();
-
-		int nItem = m_listResults.InsertItem(i, result.GetTimestampString());
-		m_listResults.SetItemText(nItem, 1, CString(build.characterName.c_str()));
-		m_listResults.SetItemText(nItem, 2, CString(build.specName.c_str()));
-
-		CString ilvl;
-		ilvl.Format(_T("%.1f"), build.itemLevel);
-		m_listResults.SetItemText(nItem, 3, ilvl);
-
-		CString dps;
-		dps.Format(_T("%.1f"), result.GetDpsStats().mean);
-		m_listResults.SetItemText(nItem, 4, dps);
-
-		m_listResults.SetItemText(nItem, 5, result.GetFightStyle());
-
-		// 결과 ID를 항목 데이터로 저장
-		m_listResults.SetItemData(nItem, (DWORD_PTR)i);
-	}
-}
-
 void CResultHistoryDlg::OnLvnItemchangedListResults(NMHDR* pNMHDR, LRESULT* pResult)
 {
 	LPNMLISTVIEW pNMLV = reinterpret_cast<LPNMLISTVIEW>(pNMHDR);
@@ -153,15 +122,15 @@ void CResultHistoryDlg::UpdateDetails()
 				details += _T("=== 시뮬레이션 정보 ===\r\n");
 				details.AppendFormat(_T("시간: %s\r\n"), pResult->GetTimestampString());
 				details.AppendFormat(_T("캐릭터: %s - %s (%s)\r\n"),
-					CString(pResult->GetBuildInfo().characterName.c_str()),
-					CString(pResult->GetBuildInfo().specName.c_str()),
-					CString(pResult->GetBuildInfo().className.c_str()));
+					CString(pResult->GetBuildInfo().characterName),
+					CString(pResult->GetBuildInfo().specName),
+					CString(pResult->GetBuildInfo().className));
 				details.AppendFormat(_T("아이템 레벨: %.1f\r\n"), pResult->GetBuildInfo().itemLevel);
 
 				details += _T("\r\n=== DPS 통계 ===\r\n");
 				details.AppendFormat(_T("평균: %.1f\r\n"), pResult->GetDpsStats().mean);
-				details.AppendFormat(_T("최소: %.1f\r\n"), pResult->GetDpsStats().min);
-				details.AppendFormat(_T("최대: %.1f\r\n"), pResult->GetDpsStats().max);
+				details.AppendFormat(_T("최소: %.1f\r\n"), pResult->GetDpsStats().minVal);
+				details.AppendFormat(_T("최대: %.1f\r\n"), pResult->GetDpsStats().maxVal);
 				details.AppendFormat(_T("표준편차: %.2f\r\n"), pResult->GetDpsStats().stdDev);
 				details.AppendFormat(_T("오차: %.2f\r\n"), pResult->GetDpsStats().error);
 
@@ -342,8 +311,62 @@ void CResultHistoryDlg::OnBnClickedButtonCloseHistory()
 void CResultHistoryDlg::OnCbnSelchangeComboFilter()
 {
 	// 필터 변경 시 목록 갱신
-	// TODO: 캐릭터 필터 구현
 	RefreshResultList();
+}
+
+void CResultHistoryDlg::RefreshResultList()
+{
+	m_listResults.DeleteAllItems();
+
+	CResultHistoryManager* pMgr = GetResultHistoryManager();
+	if (!pMgr)
+		return;
+
+	// 현재 필터 설정 확인
+	int filterSel = m_comboFilter.GetCurSel();
+	CString currentCharacter;
+
+	if (filterSel == 1) // "현재 캐릭터만" 필터
+	{
+		// 메인 프레임에서 현재 캐릭터 정보 가져오기
+		CMainFrame* pFrame = static_cast<CMainFrame*>(AfxGetMainWnd());
+		if (pFrame && pFrame->GetCharacterData())
+		{
+			currentCharacter = CString(pFrame->GetCharacterData()->GetName().c_str());
+		}
+	}
+
+	const auto& results = pMgr->GetAllResults();
+	for (int i = 0; i < pMgr->GetResultCount(); ++i)
+	{
+		const auto& result = results[i];
+		const auto& build = result.GetBuildInfo();
+
+		// 캐릭터 필터 적용
+		if (filterSel == 1 && !currentCharacter.IsEmpty())
+		{
+			CString resultChar(build.characterName);
+			if (resultChar.CompareNoCase(currentCharacter) != 0)
+				continue; // 현재 캐릭터가 아니면 스킵
+		}
+
+		int nItem = m_listResults.InsertItem(i, result.GetTimestampString());
+		m_listResults.SetItemText(nItem, 1, build.characterName);
+		m_listResults.SetItemText(nItem, 2, build.specName);
+
+		CString ilvl;
+		ilvl.Format(_T("%.1f"), build.itemLevel);
+		m_listResults.SetItemText(nItem, 3, ilvl);
+
+		CString dps;
+		dps.Format(_T("%.1f"), result.GetDpsStats().mean);
+		m_listResults.SetItemText(nItem, 4, dps);
+
+		m_listResults.SetItemText(nItem, 5, result.GetFightStyle());
+
+		// 결과 ID를 항목 데이터로 저장
+		m_listResults.SetItemData(nItem, (DWORD_PTR)i);
+	}
 }
 
 CString CResultHistoryDlg::GetSelectedResultId() const

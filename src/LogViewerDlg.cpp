@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "LogViewerDlg.h"
 #include "Logger.h"
@@ -113,8 +113,129 @@ void CLogViewerDlg::FilterLogs()
     int levelSel = m_comboLevel.GetCurSel();
     int catSel = m_comboCategory.GetCurSel();
 
-    // TODO: 실제 필터링 구현
-    // 현재는 전체 표시
+    // 로거에서 최근 로그 가져오기
+    CLogger* pLogger = GetLogger();
+    if (!pLogger)
+        return;
+
+    CString recentLogs = pLogger->GetRecentLogs(1000);
+
+    // 리스트 초기화
+    m_listLogs.DeleteAllItems();
+
+    // 로그 파싱 및 필터링
+    std::vector<CString> lines;
+    int pos = 0;
+    CString line;
+    while (AfxExtractSubString(line, recentLogs, pos++, '\n'))
+    {
+        line.Trim();
+        if (line.IsEmpty())
+            continue;
+
+        // 필터 적용
+        if (ShouldShowLog(line, levelSel, catSel))
+        {
+            AddLogLineToList(line);
+        }
+    }
+
+    // 자동 스크롤
+    if (m_bAutoScroll && m_listLogs.GetItemCount() > 0)
+    {
+        m_listLogs.EnsureVisible(m_listLogs.GetItemCount() - 1, FALSE);
+    }
+}
+
+BOOL CLogViewerDlg::ShouldShowLog(const CString& line, int levelSel, int catSel)
+{
+    // 레벨 필터 체크
+    if (levelSel > 0) // 0 = 전체
+    {
+        CString levelStr;
+        switch (levelSel)
+        {
+        case 1: levelStr = _T("DEBUG"); break;
+        case 2: levelStr = _T("INFO"); break;
+        case 3: levelStr = _T("WARN"); break;
+        case 4: levelStr = _T("ERROR"); break;
+        case 5: levelStr = _T("CRIT"); break;
+        }
+
+        if (line.Find(levelStr) == -1)
+        {
+            // 다른 레벨이 포함되어 있는지 확인
+            return FALSE;
+        }
+    }
+
+    // 카테고리 필터 체크
+    if (catSel > 0) // 0 = 전체
+    {
+        CString catStr;
+        switch (catSel)
+        {
+        case 1: catStr = _T("GENERAL"); break;
+        case 2: catStr = _T("API"); break;
+        case 3: catStr = _T("SIMC"); break;
+        case 4: catStr = _T("SIM"); break;
+        case 5: catStr = _T("UI"); break;
+        case 6: catStr = _T("CONFIG"); break;
+        case 7: catStr = _T("NET"); break;
+        }
+
+        if (line.Find(catStr) == -1)
+            return FALSE;
+    }
+
+    return TRUE;
+}
+
+void CLogViewerDlg::AddLogLineToList(const CString& line)
+{
+    // 로그 라인 파싱
+    // 형식: [2026-03-09 10:30:45] [INFO] [GENERAL] 메시지 (파일:라인)
+
+    CString timestamp, level, category, message, source;
+
+    int pos1 = line.Find('[');
+    int pos2 = line.Find(']', pos1);
+    if (pos1 >= 0 && pos2 > pos1)
+    {
+        timestamp = line.Mid(pos1 + 1, pos2 - pos1 - 1);
+    }
+
+    pos1 = line.Find('[', pos2);
+    pos2 = line.Find(']', pos1);
+    if (pos1 >= 0 && pos2 > pos1)
+    {
+        level = line.Mid(pos1 + 1, pos2 - pos1 - 1);
+    }
+
+    pos1 = line.Find('[', pos2);
+    pos2 = line.Find(']', pos1);
+    if (pos1 >= 0 && pos2 > pos1)
+    {
+        category = line.Mid(pos1 + 1, pos2 - pos1 - 1);
+    }
+
+    int msgStart = pos2 + 2;
+    int srcPos = line.Find(_T(" ("), msgStart);
+    if (srcPos > 0)
+    {
+        message = line.Mid(msgStart, srcPos - msgStart);
+        source = line.Mid(srcPos + 2, line.GetLength() - srcPos - 3);
+    }
+    else
+    {
+        message = line.Mid(msgStart);
+    }
+
+    int nItem = m_listLogs.InsertItem(m_listLogs.GetItemCount(), timestamp);
+    m_listLogs.SetItemText(nItem, 1, level);
+    m_listLogs.SetItemText(nItem, 2, category);
+    m_listLogs.SetItemText(nItem, 3, message);
+    m_listLogs.SetItemText(nItem, 4, source);
 }
 
 void CLogViewerDlg::OnLvnItemchangedListLogs(NMHDR* pNMHDR, LRESULT* pResult)
@@ -214,7 +335,7 @@ void CLogViewerDlg::OnTimer(UINT_PTR nIDEvent)
     if (nIDEvent == LOG_REFRESH_TIMER)
     {
         // 주기적으로 새 로그 확인
-        // TODO: 실시간 업데이트 구현
+        RefreshLogList();
     }
 
     CDialogEx::OnTimer(nIDEvent);

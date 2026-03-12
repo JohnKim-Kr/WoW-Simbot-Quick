@@ -1,4 +1,8 @@
-#pragma once
+﻿#pragma once
+
+#include <map>
+#include <chrono>
+#include <afxmt.h>  // For CCriticalSection
 
 // 디버깅 및 진단 도구 클래스
 class CDebugTools
@@ -37,11 +41,8 @@ public:
     // 네트워크 연결 테스트
     BOOL TestNetworkConnection(const CString& host, int port, int timeoutMs, CString& outError);
 
-    // Battle.net API 테스트
-    BOOL TestBnetApi(const CString& clientId, const CString& clientSecret, CString& outError);
-
     // 설정 유효성 검사
-    BOOL ValidateSettings(CString& outReport);
+    BOOL ValidateSettings(CString& outReport) const;
 
     // 시스템 정보
     CString GetSystemInfo() const;

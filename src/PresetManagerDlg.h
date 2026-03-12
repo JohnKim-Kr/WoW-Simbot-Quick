@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // 프리셋 관리 대화상자
 class CPresetManagerDlg : public CDialogEx

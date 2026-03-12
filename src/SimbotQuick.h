@@ -62,19 +62,21 @@ public:
 
     // Settings persistence
     void LoadSettings();
+public:
     void SaveSettings() const;
 
     // Simulation state
     BOOL IsSimRunning() const { return m_bSimRunning; }
     void SetSimRunning(BOOL running) { m_bSimRunning = running; }
 
-private:
+// Member variables - made public for access from dialogs
+public:
     CString m_strSimcPath;
     CString m_strClientId;
     CString m_strClientSecret;
     BOOL    m_bSimRunning;
 
-    HCURSOR m_hAccelTable;
+    HACCEL m_hAccelTable;
 };
 
 extern CWoWSimbotQuickApp theApp;

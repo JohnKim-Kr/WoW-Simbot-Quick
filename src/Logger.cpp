@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "Logger.h"
 
@@ -474,11 +474,49 @@ BOOL CLogger::ClearAllLogs()
 
 BOOL CLogger::ArchiveLogs(const CString& archivePath)
 {
-    // TODO: ZIP 파일로 로그 아카이브
-    return FALSE;
+    // ZIP 파일로 로그 아카이브 생성
+    // Windows shell API를 사용한 압축
+
+    auto logFiles = GetLogFiles();
+    if (logFiles.empty())
+    {
+        return FALSE;
+    }
+
+    // 임시 폴터 생성
+    CString tempDir = m_logDirectory + _T("\\TempArchive");
+    CreateDirectory(tempDir, NULL);
+
+    // 파일들을 임시 폴터로 복사
+    for (const auto& file : logFiles)
+    {
+        CString fileName = PathFindFileName(file);
+        CString destPath = tempDir + _T("\\") + fileName;
+        CopyFile(file, destPath, FALSE);
+    }
+
+    // PowerShell을 사용하여 ZIP 생성
+    CString psCmd;
+    psCmd.Format(_T("powershell -Command \"Compress-Archive -Path '%s\\*' -DestinationPath '%s' -Force\""),
+        tempDir, archivePath);
+
+    _tsystem(psCmd);
+
+    // 임시 폴터 정리
+    for (const auto& file : logFiles)
+    {
+        CString fileName = PathFindFileName(file);
+        CString destPath = tempDir + _T("\\") + fileName;
+        DeleteFile(destPath);
+    }
+    RemoveDirectory(tempDir);
+
+    Info(LogCategory::General, _T("Logs archived to: ") + archivePath);
+
+    return PathFileExists(archivePath);
 }
 
-CString CLogger::GetRecentLogs(int count) const
+CString CLogger::GetRecentLogs(int count)
 {
     if (!m_pLogFile || m_currentLogFile.IsEmpty())
         return CString();
@@ -513,10 +551,214 @@ CString CLogger::GetRecentLogs(int count) const
     return content;
 }
 
-BOOL CLogger::ExportLogs(const CString& filePath, int maxEntries) const
+BOOL CLogger::ExportLogs(const CString& filePath, int maxEntries)
 {
-    // TODO: 로그 낵스포트 구현
-    return FALSE;
+    // 로그 낵스포트 구현
+    CString ext = PathFindExtension(filePath);
+    ext.MakeLower();
+
+    if (ext == _T(".csv"))
+    {
+        return ExportLogsToCsv(filePath, maxEntries);
+    }
+    else if (ext == _T(".json"))
+    {
+        return ExportLogsToJson(filePath, maxEntries);
+    }
+    else
+    {
+        // 기본 텍스트 형식
+        return ExportLogsToText(filePath, maxEntries);
+    }
+}
+
+BOOL CLogger::ExportLogsToCsv(const CString& filePath, int maxEntries)
+{
+    CStdioFile file;
+    if (!file.Open(filePath, CFile::modeCreate | CFile::modeWrite | CFile::typeText))
+    {
+        return FALSE;
+    }
+
+    // CSV 헤더
+    file.WriteString(_T("Timestamp,Level,Category,Message,Source File,Line,Function\n"));
+
+    // 현재 로그 파일 읽기
+    if (!m_currentLogFile.IsEmpty() && PathFileExists(m_currentLogFile))
+    {
+        CString content = GetRecentLogs(maxEntries);
+
+        // 각 라인을 CSV로 변환
+        int pos = 0;
+        CString line;
+        while (AfxExtractSubString(line, content, pos++, '\n'))
+        {
+            line.Trim();
+            if (line.IsEmpty())
+                continue;
+
+            // CSV 형식으로 변환
+            CString timestamp, level, category, message, source;
+
+            int p1 = line.Find('[');
+            int p2 = line.Find(']', p1);
+            if (p1 >= 0 && p2 > p1)
+            {
+                timestamp = line.Mid(p1 + 1, p2 - p1 - 1);
+            }
+
+            p1 = line.Find('[', p2);
+            p2 = line.Find(']', p1);
+            if (p1 >= 0 && p2 > p1)
+            {
+                level = line.Mid(p1 + 1, p2 - p1 - 1);
+            }
+
+            p1 = line.Find('[', p2);
+            p2 = line.Find(']', p1);
+            if (p1 >= 0 && p2 > p1)
+            {
+                category = line.Mid(p1 + 1, p2 - p1 - 1);
+            }
+
+            int msgStart = p2 + 2;
+            int srcPos = line.Find(_T(" ("), msgStart);
+            if (srcPos > 0)
+            {
+                message = line.Mid(msgStart, srcPos - msgStart);
+                source = line.Mid(srcPos + 2, line.GetLength() - srcPos - 3);
+            }
+            else
+            {
+                message = line.Mid(msgStart);
+            }
+
+            // CSV 특수문자 처리
+            message.Replace(_T("\""), _T("\"\""));
+            if (message.Find(',') >= 0 || message.Find('"') >= 0 || message.Find('\n') >= 0)
+            {
+                message = _T("\"") + message + _T("\"");
+            }
+
+            CString csvLine;
+            csvLine.Format(_T("%s,%s,%s,%s,%s\n"),
+                timestamp, level, category, message, source);
+            file.WriteString(csvLine);
+        }
+    }
+
+    file.Close();
+    return TRUE;
+}
+
+BOOL CLogger::ExportLogsToJson(const CString& filePath, int maxEntries)
+{
+    CStdioFile file;
+    if (!file.Open(filePath, CFile::modeCreate | CFile::modeWrite | CFile::typeText))
+    {
+        return FALSE;
+    }
+
+    file.WriteString(_T("{\n"));
+    file.WriteString(_T("  \"logs\": [\n"));
+
+    CString content = GetRecentLogs(maxEntries);
+
+    int pos = 0;
+    CString line;
+    int count = 0;
+    while (AfxExtractSubString(line, content, pos++, '\n'))
+    {
+        line.Trim();
+        if (line.IsEmpty())
+            continue;
+
+        if (count > 0)
+        {
+            file.WriteString(_T(",\n"));
+        }
+
+        // JSON 형식으로 변환
+        CString timestamp, level, category, message, source;
+
+        int p1 = line.Find('[');
+        int p2 = line.Find(']', p1);
+        if (p1 >= 0 && p2 > p1)
+        {
+            timestamp = line.Mid(p1 + 1, p2 - p1 - 1);
+        }
+
+        p1 = line.Find('[', p2);
+        p2 = line.Find(']', p1);
+        if (p1 >= 0 && p2 > p1)
+        {
+            level = line.Mid(p1 + 1, p2 - p1 - 1);
+        }
+
+        p1 = line.Find('[', p2);
+        p2 = line.Find(']', p1);
+        if (p1 >= 0 && p2 > p1)
+        {
+            category = line.Mid(p1 + 1, p2 - p1 - 1);
+        }
+
+        int msgStart = p2 + 2;
+        int srcPos = line.Find(_T(" ("), msgStart);
+        if (srcPos > 0)
+        {
+            message = line.Mid(msgStart, srcPos - msgStart);
+            source = line.Mid(srcPos + 2, line.GetLength() - srcPos - 3);
+        }
+        else
+        {
+            message = line.Mid(msgStart);
+        }
+
+        // JSON 특수문자 이스케이프
+        message.Replace(_T("\\"), _T("\\\\"));
+        message.Replace(_T("\""), _T("\\\""));
+        message.Replace(_T("\n"), _T("\\n"));
+        message.Replace(_T("\r"), _T("\\r"));
+        message.Replace(_T("\t"), _T("\\t"));
+
+        CString jsonLine;
+        jsonLine.Format(_T("    {\n"));
+        jsonLine += _T("      \"timestamp\": \"") + timestamp + _T("\",\n");
+        jsonLine += _T("      \"level\": \"") + level + _T("\",\n");
+        jsonLine += _T("      \"category\": \"") + category + _T("\",\n");
+        jsonLine += _T("      \"message\": \"") + message + _T("\"");
+        if (!source.IsEmpty())
+        {
+            jsonLine += _T(",\n      \"source\": \"") + source + _T("\"");
+        }
+        jsonLine += _T("\n    }");
+
+        file.WriteString(jsonLine);
+        count++;
+    }
+
+    file.WriteString(_T("\n  ]\n}"));
+    file.Close();
+    return TRUE;
+}
+
+BOOL CLogger::ExportLogsToText(const CString& filePath, int maxEntries)
+{
+    CString content = GetRecentLogs(maxEntries);
+
+    CStdioFile file;
+    if (!file.Open(filePath, CFile::modeCreate | CFile::modeWrite | CFile::typeText))
+    {
+        return FALSE;
+    }
+
+    // BOM 작성
+    const char bom[] = "\xEF\xBB\xBF";
+    file.Write(bom, 3);
+
+    file.WriteString(content);
+    file.Close();
+    return TRUE;
 }
 
 int CLogger::GetLogCountByLevel(LogLevel level) const

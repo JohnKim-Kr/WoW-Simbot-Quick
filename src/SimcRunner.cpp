@@ -1,6 +1,8 @@
 #include "pch.h"
 #include "framework.h"
 #include "SimcRunner.h"
+#include <filesystem>
+namespace fs = std::filesystem;
 
 CSimcRunner::CSimcRunner()
     : m_hProcess(nullptr)
@@ -27,7 +29,7 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     }
 
     // Verify simc.exe exists
-    if (!fs::exists(CT2A(simcPath)))
+    if (!fs::exists(std::filesystem::path(std::wstring(simcPath))))
     {
         m_strLastError.Format(_T("simc.exe not found: %s"), simcPath);
         return FALSE;
@@ -46,8 +48,8 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
 
     // Build command line
     CString cmdLine;
-    cmdLine.Format(_T(""%s" "%s""),
-        simcPath, profileFile);
+    cmdLine.Format(_T("\"%s\" \"%s\""),
+        (LPCTSTR)simcPath, (LPCTSTR)profileFile);
 
     // Set up security attributes for pipe
     SECURITY_ATTRIBUTES sa;
@@ -108,6 +110,12 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     m_hProcess = pi.hProcess;
     m_hThread = pi.hThread;
 
+    // Immediately notify simulation has started (0%)
+    if (progressCallback)
+    {
+        progressCallback(0);
+    }
+
     // Read output and update progress
     CString output;
     int lastProgress = 0;
@@ -160,7 +168,7 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
 
         if (exitCode != 0)
         {
-            m_strLastError.Format(_T("simc exited with code %d"), exitCode);
+            m_strLastError.Format(_T("simc exited with code %d\nOutput: %s"), exitCode, output);
         }
     }
 
@@ -170,8 +178,9 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     m_hProcess = nullptr;
     m_hThread = nullptr;
 
-    // Delete temporary profile file
-    DeleteFile(profileFile);
+    // DEBUG: Don't delete temporary profile file for debugging
+    // DeleteFile(profileFile);
+    TRACE(_T("Profile file for debugging: %s\n"), profileFile);
 
     m_bRunning = FALSE;
 
@@ -203,7 +212,7 @@ CString CSimcRunner::GetSimcVersion(const CString& simcPath)
 
     // Run simc.exe --version
     CString cmdLine;
-    cmdLine.Format(_T(""%s" --version"), simcPath);
+    cmdLine.Format(_T("\"%s\" --version"), (LPCTSTR)simcPath);
 
     SECURITY_ATTRIBUTES sa;
     sa.nLength = sizeof(SECURITY_ATTRIBUTES);
@@ -278,14 +287,18 @@ CString CSimcRunner::CreateProfileFile(const CString& profile)
     CString profileFile = tempFile;
     profileFile.Replace(_T(".tmp"), _T(".simc"));
 
-    // Write profile to file
-    CStdioFile file;
-    if (file.Open(profileFile, CFile::modeCreate | CFile::modeWrite | CFile::typeText))
+    // Write profile to file (binary mode for UTF-8 compatibility)
+    CFile file;
+    if (file.Open(profileFile, CFile::modeCreate | CFile::modeWrite))
     {
-        file.WriteString(profile);
+        // Convert CString to UTF-8
+        CT2A utf8Profile(profile, CP_UTF8);
+        file.Write(utf8Profile, strlen(utf8Profile));
         file.Close();
+        TRACE(_T("Profile file created: %s (%d bytes)\n"), profileFile, strlen(utf8Profile));
         return profileFile;
     }
+    TRACE(_T("Failed to create profile file: %s\n"), profileFile);
 
     return CString();
 }
@@ -296,8 +309,8 @@ int CSimcRunner::ParseProgress(const CString& output)
     // Common formats: "Generating baseline...", "X%", etc.
 
     // Try to find percentage
-    std::regex pctRegex(R"((\d+)%");
-    std::string str = CT2A(output);
+    std::regex pctRegex(R"((\d+)%)");
+    std::string str = std::string(CT2A(output));
 
     std::sregex_iterator iter(str.begin(), str.end(), pctRegex);
     std::sregex_iterator end;

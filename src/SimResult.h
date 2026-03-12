@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // 시뮬레이션 결과 데이터 클래스
 class CSimResult
@@ -8,13 +8,14 @@ public:
     struct DpsStats
     {
         double mean;
-        double min;
-        double max;
+        double minVal;
+        double maxVal;
         double stdDev;
+        double median;
         double error;
         double confidence;
 
-        DpsStats() : mean(0), min(0), max(0), stdDev(0), error(0), confidence(0) {}
+        DpsStats() : mean(0), minVal(0), maxVal(0), stdDev(0), median(0), error(0), confidence(0) {}
     };
 
     // 능력치 기여도

@@ -1,4 +1,4 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "ResultHistoryManager.h"
 
@@ -95,7 +95,8 @@ void CResultHistoryManager::LoadHistory()
 {
     CString historyFile = GetHistoryFilePath();
 
-    std::ifstream file(CT2A(historyFile));
+    std::string histFile = std::string(CT2A(historyFile));
+    std::ifstream file(histFile);
     if (!file.is_open())
         return;
 
@@ -152,7 +153,8 @@ void CResultHistoryManager::SaveHistory() const
             SaveResultToFile(result);
         }
 
-        std::ofstream file(CT2A(historyFile));
+        std::string histPath = std::string(CT2A(historyFile));
+        std::ofstream file(histPath);
         if (file.is_open())
         {
             file << j.dump(4);
@@ -341,7 +343,8 @@ BOOL CResultHistoryManager::ExportResultToCsv(const CString& id, const CString& 
 
     try
     {
-        std::ofstream file(CT2A(filePath));
+        std::string exportPath = std::string(CT2A(filePath));
+        std::ofstream file(exportPath);
         if (!file.is_open())
             return FALSE;
 
@@ -352,29 +355,29 @@ BOOL CResultHistoryManager::ExportResultToCsv(const CString& id, const CString& 
         file << "항목,값\n";
 
         // 기본 정보
-        file << "캐릭터," <> CT2A(result.GetBuildInfo().characterName) << "\n";
-        file << "서버," <> CT2A(result.GetBuildInfo().server) << "\n";
-        file << "직업," <> CT2A(result.GetBuildInfo().className) << "\n";
-        file << "전문화," <> CT2A(result.GetBuildInfo().specName) << "\n";
-        file << "아이템레벨," <> result.GetBuildInfo().itemLevel << "\n";
+        file << "캐릭터," << CT2A(result.GetBuildInfo().characterName) << "\n";
+        file << "서버," << CT2A(result.GetBuildInfo().server) << "\n";
+        file << "직업," << CT2A(result.GetBuildInfo().className) << "\n";
+        file << "전문화," << CT2A(result.GetBuildInfo().specName) << "\n";
+        file << "아이템레벨," << result.GetBuildInfo().itemLevel << "\n";
 
         // DPS
         file << "\nDPS 통계\n";
-        file << "평균 DPS," <> result.GetDpsStats().mean << "\n";
-        file << "최소 DPS," <> result.GetDpsStats().min << "\n";
-        file << "최대 DPS," <> result.GetDpsStats().max << "\n";
-        file << "표준편차," <> result.GetDpsStats().stdDev << "\n";
-        file << "오차," <> result.GetDpsStats().error << "\n";
+        file << "평균 DPS," << result.GetDpsStats().mean << "\n";
+        file << "최소 DPS," << result.GetDpsStats().minVal << "\n";
+        file << "최대 DPS," << result.GetDpsStats().maxVal << "\n";
+        file << "표준편차," << result.GetDpsStats().stdDev << "\n";
+        file << "오차," << result.GetDpsStats().error << "\n";
 
         // 스킬 기여도
         file << "\n스킬 기여도\n";
         file << "스킬명,DPS,비율,사용횟수\n";
         for (const auto& ability : result.GetAbilities())
         {
-            file <> CT2A(ability.name) << ","
-                 <> ability.dps << ","
-                 <> ability.pct << ","
-                 <> ability.count << "\n";
+            file << CT2A(ability.name) << ","
+                 << ability.dps << ","
+                 << ability.pct << ","
+                 << ability.count << "\n";
         }
 
         return TRUE;
@@ -389,7 +392,8 @@ BOOL CResultHistoryManager::ExportAllToCsv(const CString& filePath) const
 {
     try
     {
-        std::ofstream file(CT2A(filePath));
+        std::string exportPath = std::string(CT2A(filePath));
+        std::ofstream file(exportPath);
         if (!file.is_open())
             return FALSE;
 
@@ -402,18 +406,18 @@ BOOL CResultHistoryManager::ExportAllToCsv(const CString& filePath) const
         // 데이터
         for (const auto& result : m_results)
         {
-            file <> CT2A(result.GetTimestampString()) << ","
-                 <> CT2A(result.GetBuildInfo().characterName) << ","
-                 <> CT2A(result.GetBuildInfo().server) << ","
-                 <> CT2A(result.GetBuildInfo().className) << ","
-                 <> CT2A(result.GetBuildInfo().specName) << ","
-                 <> result.GetBuildInfo().itemLevel << ","
-                 <> result.GetDpsStats().mean << ","
-                 <> result.GetDpsStats().error << ","
-                 <> result.GetHpsStats().mean << ","
-                 <> CT2A(result.GetFightStyle()) << ","
-                 <> result.GetDuration() << ","
-                 <> result.GetIterations() << "\n";
+            file << CT2A(result.GetTimestampString()) << ","
+                 << CT2A(result.GetBuildInfo().characterName) << ","
+                 << CT2A(result.GetBuildInfo().server) << ","
+                 << CT2A(result.GetBuildInfo().className) << ","
+                 << CT2A(result.GetBuildInfo().specName) << ","
+                 << result.GetBuildInfo().itemLevel << ","
+                 << result.GetDpsStats().mean << ","
+                 << result.GetDpsStats().error << ","
+                 << result.GetHpsStats().mean << ","
+                 << CT2A(result.GetFightStyle()) << ","
+                 << result.GetDuration() << ","
+                 << result.GetIterations() << "\n";
         }
 
         return TRUE;
@@ -463,45 +467,83 @@ BOOL CResultHistoryManager::ParseSimcJson(const CString& jsonFile, CSimResult& o
 {
     try
     {
-        std::ifstream file(CT2A(jsonFile));
+        std::string jsonPath = std::string(CT2A(jsonFile));
+        std::ifstream file(jsonPath);
         if (!file.is_open())
+        {
+            TRACE(_T("ParseSimcJson: Failed to open file %s\n"), jsonFile);
             return FALSE;
+        }
 
         json j;
         file >> j;
 
         if (!j.contains("sim") || !j["sim"].contains("players"))
+        {
+            TRACE(_T("ParseSimcJson: Missing 'sim' or 'players' in JSON\n"));
             return FALSE;
+        }
 
         auto& players = j["sim"]["players"];
         if (players.empty())
+        {
+            TRACE(_T("ParseSimcJson: Players array is empty\n"));
             return FALSE;
+        }
 
         auto& player = players[0];
+
+        if (!player.contains("collected_data"))
+        {
+            TRACE(_T("ParseSimcJson: Missing 'collected_data' in player\n"));
+            return FALSE;
+        }
+
         auto& data = player["collected_data"];
 
         // DPS 통계
         if (data.contains("dps"))
         {
             auto& dps = data["dps"];
-            outResult.GetDpsStats().mean = dps["mean"].get<double>();
-            outResult.GetDpsStats().min = dps["min"].get<double>();
-            outResult.GetDpsStats().max = dps["max"].get<double>();
-            outResult.GetDpsStats().stdDev = dps["std_dev"].get<double>();
-            outResult.GetDpsStats().error = dps["error"].get<double>();
-            outResult.GetDpsStats().confidence = dps["confidence"].get<double>();
+
+            if (dps.contains("mean"))
+                outResult.GetDpsStats().mean = dps["mean"].get<double>();
+            if (dps.contains("min"))
+                outResult.GetDpsStats().minVal = dps["min"].get<double>();
+            if (dps.contains("max"))
+                outResult.GetDpsStats().maxVal = dps["max"].get<double>();
+            if (dps.contains("std_dev"))
+                outResult.GetDpsStats().stdDev = dps["std_dev"].get<double>();
+            if (dps.contains("median"))
+                outResult.GetDpsStats().median = dps["median"].get<double>();
+            if (dps.contains("error"))
+                outResult.GetDpsStats().error = dps["error"].get<double>();
+            if (dps.contains("confidence"))
+                outResult.GetDpsStats().confidence = dps["confidence"].get<double>();
+        }
+        else
+        {
+            TRACE(_T("ParseSimcJson: Missing 'dps' in collected_data\n"));
         }
 
         // HPS 통계
         if (data.contains("hps"))
         {
             auto& hps = data["hps"];
-            outResult.GetHpsStats().mean = hps["mean"].get<double>();
-            outResult.GetHpsStats().min = hps["min"].get<double>();
-            outResult.GetHpsStats().max = hps["max"].get<double>();
-            outResult.GetHpsStats().stdDev = hps["std_dev"].get<double>();
-            outResult.GetHpsStats().error = hps["error"].get<double>();
-            outResult.GetHpsStats().confidence = hps["confidence"].get<double>();
+            if (hps.contains("mean"))
+                outResult.GetHpsStats().mean = hps["mean"].get<double>();
+            if (hps.contains("min"))
+                outResult.GetHpsStats().minVal = hps["min"].get<double>();
+            if (hps.contains("max"))
+                outResult.GetHpsStats().maxVal = hps["max"].get<double>();
+            if (hps.contains("std_dev"))
+                outResult.GetHpsStats().stdDev = hps["std_dev"].get<double>();
+            if (hps.contains("median"))
+                outResult.GetHpsStats().median = hps["median"].get<double>();
+            if (hps.contains("error"))
+                outResult.GetHpsStats().error = hps["error"].get<double>();
+            if (hps.contains("confidence"))
+                outResult.GetHpsStats().confidence = hps["confidence"].get<double>();
         }
 
         // 빌드 정보
@@ -517,7 +559,7 @@ BOOL CResultHistoryManager::ParseSimcJson(const CString& jsonFile, CSimResult& o
             if (opts.contains("iterations"))
                 outResult.SetIterations(opts["iterations"].get<int>());
             if (opts.contains("fight_style"))
-                outResult.SetFightStyle(CA2T(opts["fight_style"].get<std::string>().c_str()));
+                outResult.SetFightStyle(CString(opts["fight_style"].get<std::string>().c_str()));
         }
 
         // 스킬 기여도
@@ -553,7 +595,9 @@ BOOL CResultHistoryManager::ParseSimcJson(const CString& jsonFile, CSimResult& o
     }
     catch (const std::exception& e)
     {
-        TRACE1("ParseSimcJson error: %s\n", e.what());
+        CString errorMsg;
+        errorMsg.Format(_T("ParseSimcJson error: %s"), CA2T(e.what()));
+        AfxMessageBox(errorMsg, MB_ICONERROR);
         return FALSE;
     }
 }

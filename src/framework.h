@@ -23,6 +23,9 @@
 #include <afxpropertygridctrl.h>
 
 // Windows API headers
+#ifndef NOMINMAX
+#define NOMINMAX  // Prevent Windows from defining min/max macros
+#endif
 #include <windows.h>
 #include <winhttp.h>
 #include <shellapi.h>

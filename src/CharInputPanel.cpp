@@ -1,111 +1,161 @@
-#include "pch.h"
+﻿#include "pch.h"
 #include "framework.h"
 #include "SimbotQuick.h"
 #include "MainFrame.h"
 #include "CharInputPanel.h"
-#include "SimSettingsPanel.h"
 #include "CharacterData.h"
 #include "resource.h"
 
-IMPLEMENT_DYNCREATE(CCharInputPanel, CFormView)
+IMPLEMENT_DYNCREATE(CCharInputPanel, CView)
 
-BEGIN_MESSAGE_MAP(CCharInputPanel, CFormView)
-    ON_BN_CLICKED(IDC_BUTTON_LOAD, &CCharInputPanel::OnBnClickedButtonLoad)
-    ON_BN_CLICKED(IDC_BUTTON_OAUTH, &CCharInputPanel::OnBnClickedButtonOAuth)
-    ON_CBN_SELCHANGE(IDC_COMBO_REGION, &CCharInputPanel::OnCbnSelchangeComboRegion)
-    ON_EN_CHANGE(IDC_EDIT_SERVER, &CCharInputPanel::OnEnChangeEditServer)
-    ON_EN_CHANGE(IDC_EDIT_CHARACTER, &CCharInputPanel::OnEnChangeEditCharacter)
+BEGIN_MESSAGE_MAP(CCharInputPanel, CView)
+    ON_WM_CREATE()
+    ON_WM_SIZE()
+    ON_BN_CLICKED(IDC_BUTTON_LOAD, &CCharInputPanel::OnBnClickedButtonParse)
+    ON_BN_CLICKED(IDC_BUTTON_CLEAR, &CCharInputPanel::OnBnClickedButtonClear)
+    ON_BN_CLICKED(ID_BUTTON_SETTINGS, &CCharInputPanel::OnBnClickedButtonSettings)
 END_MESSAGE_MAP()
 
 CCharInputPanel::CCharInputPanel()
-    : CFormView(IDD_FORMVIEW_CHAR_INPUT)
-    , m_pNestedSplitter(nullptr)
 {
 }
 
 CCharInputPanel::~CCharInputPanel()
 {
-    delete m_pNestedSplitter;
 }
 
-void CCharInputPanel::DoDataExchange(CDataExchange* pDX)
+void CCharInputPanel::OnDraw(CDC* pDC)
 {
-    CFormView::DoDataExchange(pDX);
-    DDX_Control(pDX, IDC_COMBO_REGION, m_comboRegion);
-    DDX_Control(pDX, IDC_EDIT_SERVER, m_editServer);
-    DDX_Control(pDX, IDC_EDIT_CHARACTER, m_editCharacter);
-    DDX_Control(pDX, IDC_BUTTON_LOAD, m_btnLoad);
-    DDX_Control(pDX, IDC_BUTTON_OAUTH, m_btnOAuth);
-    DDX_Control(pDX, IDC_STATIC_CHAR_INFO, m_staticCharInfo);
-    DDX_Control(pDX, IDC_STATIC_ITEM_LEVEL, m_staticItemLevel);
-    DDX_Control(pDX, IDC_STATIC_CLASS_SPEC, m_staticClassSpec);
-    DDX_Text(pDX, IDC_EDIT_SERVER, m_strServer);
-    DDX_Text(pDX, IDC_EDIT_CHARACTER, m_strCharacter);
+    CRect rect;
+    GetClientRect(&rect);
+    pDC->FillSolidRect(&rect, GetSysColor(COLOR_WINDOW));
+}
+
+int CCharInputPanel::OnCreate(LPCREATESTRUCT lpCreateStruct)
+{
+    if (CView::OnCreate(lpCreateStruct) == -1)
+        return -1;
+
+    CRect rect;
+    GetClientRect(&rect);
+
+    int x = 10, y = 10, w = rect.Width() - 20, h = 25;
+
+    m_staticLabel.Create(_T("/simc 애드온 출력을 여기에 붙여넣으세요:"), WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CRect(x, y, x + w, y + 20), this, 65535);
+
+    y += 25;
+
+    if (!m_editProfile.Create(WS_CHILD | WS_VISIBLE | WS_BORDER | WS_VSCROLL | ES_MULTILINE | ES_AUTOVSCROLL,
+        CRect(x, y, x + w, y + 200), this, IDC_EDIT_PROFILE))
+        return -1;
+
+    y += 210;
+
+    if (!m_btnParse.Create(_T("프로필 파싱"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        CRect(x, y, x + w/2 - 5, y + h), this, IDC_BUTTON_LOAD))
+        return -1;
+
+    if (!m_btnClear.Create(_T("초기화"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        CRect(x + w/2 + 5, y, x + w, y + h), this, IDC_BUTTON_CLEAR))
+        return -1;
+
+    y += h + 5;
+
+    if (!m_btnSettings.Create(_T("시뮬레이터 설정..."), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        CRect(x, y, x + w, y + h), this, ID_BUTTON_SETTINGS))
+        return -1;
+
+    y += h + 5;
+
+    if (!m_staticCharInfo.Create(_T("로드된 프로필 없음"), WS_CHILD | WS_VISIBLE | SS_LEFT,
+        CRect(x, y, x + w, rect.Height() - y), this, IDC_STATIC_CHAR_INFO))
+        return -1;
+
+    return 0;
+}
+
+void CCharInputPanel::OnSize(UINT nType, int cx, int cy)
+{
+    CView::OnSize(nType, cx, cy);
+
+    if (m_staticLabel.GetSafeHwnd())
+    {
+        int x = 10, y = 10, w = cx - 20, h = 25;
+
+        m_staticLabel.MoveWindow(x, y, w, 20);
+        y += 25;
+        m_editProfile.MoveWindow(x, y, w, 200);
+        y += 210;
+        m_btnParse.MoveWindow(x, y, w/2 - 5, h);
+        m_btnClear.MoveWindow(x + w/2 + 5, y, w/2 - 5, h);
+        y += h + 5;
+        m_btnSettings.MoveWindow(x, y, w, h);
+        y += h + 5;
+
+        m_staticCharInfo.MoveWindow(x, y, w, cy - y - 10);
+    }
 }
 
 void CCharInputPanel::OnInitialUpdate()
 {
-    CFormView::OnInitialUpdate();
-
-    // Initialize region combo box
-    m_comboRegion.AddString(_T("kr"));
-    m_comboRegion.AddString(_T("us"));
-    m_comboRegion.AddString(_T("eu"));
-    m_comboRegion.AddString(_T("tw"));
-    m_comboRegion.SetCurSel(0);  // Default to Korea
-    m_strRegion = _T("kr");
-
-    // Set initial text for info labels
-    m_staticCharInfo.SetWindowText(_T("No character loaded"));
-    m_staticItemLevel.SetWindowText(_T("Item Level: --"));
-    m_staticClassSpec.SetWindowText(_T("Class/Spec: --"));
-
-    UpdateData(FALSE);
+    CView::OnInitialUpdate();
 }
 
-void CCharInputPanel::OnBnClickedButtonLoad()
+void CCharInputPanel::OnBnClickedButtonParse()
 {
-    UpdateData(TRUE);
+    ParseSimcProfile();
+}
 
-    if (m_strServer.IsEmpty() || m_strCharacter.IsEmpty())
+void CCharInputPanel::OnBnClickedButtonClear()
+{
+    ClearProfile();
+}
+
+void CCharInputPanel::OnBnClickedButtonSettings()
+{
+    CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
+    if (pApp)
     {
-        AfxMessageBox(_T("Please enter server and character name."), MB_ICONWARNING);
+        pApp->OnFileSettings();
+    }
+}
+
+void CCharInputPanel::ParseSimcProfile()
+{
+    m_editProfile.GetWindowText(m_strProfile);
+
+    if (m_strProfile.IsEmpty())
+    {
+        AfxMessageBox(_T("먼저 simc 프로필을 붙여넣어 주세요."), MB_ICONWARNING);
         return;
     }
 
-    // Get the main frame and call load character
+    std::string profileStr = std::string(CT2A(m_strProfile));
+
     CMainFrame* pFrame = static_cast<CMainFrame*>(AfxGetMainWnd());
     if (pFrame)
     {
-        m_btnLoad.EnableWindow(FALSE);
-        m_staticCharInfo.SetWindowText(_T("Loading..."));
-        pFrame->LoadCharacter(m_strRegion, m_strServer, m_strCharacter);
+        m_btnParse.EnableWindow(FALSE);
+        BOOL success = pFrame->ParseSimcProfile(profileStr);
+        m_btnParse.EnableWindow(TRUE);
+
+        if (success)
+        {
+            AfxMessageBox(_T("프로필 파싱 성공!"), MB_ICONINFORMATION);
+        }
+        else
+        {
+            AfxMessageBox(_T("프로필 파싱 실패."), MB_ICONERROR);
+        }
     }
 }
 
-void CCharInputPanel::OnBnClickedButtonOAuth()
+void CCharInputPanel::ClearProfile()
 {
-    // TODO: Open OAuth dialog for Battle.net authentication
-    AfxMessageBox(_T("OAuth authentication not yet implemented."), MB_ICONINFORMATION);
-}
-
-void CCharInputPanel::OnCbnSelchangeComboRegion()
-{
-    int sel = m_comboRegion.GetCurSel();
-    if (sel >= 0)
-    {
-        m_comboRegion.GetLBText(sel, m_strRegion);
-    }
-}
-
-void CCharInputPanel::OnEnChangeEditServer()
-{
-    UpdateData(TRUE);
-}
-
-void CCharInputPanel::OnEnChangeEditCharacter()
-{
-    UpdateData(TRUE);
+    m_strProfile.Empty();
+    m_editProfile.SetWindowText(_T(""));
+    ClearCharacterInfo();
 }
 
 void CCharInputPanel::DisplayCharacterInfo(const CCharacterData* pCharData)
@@ -117,64 +167,22 @@ void CCharInputPanel::DisplayCharacterInfo(const CCharacterData* pCharData)
     }
 
     CString info;
-    info.Format(_T("%s - %s (%s)"),
+    info.Format(_T("캐릭터: %s\r\n")
+                _T("직업: %s\r\n")
+                _T("전문화: %s\r\n")
+                _T("아이템 레벨: %.1f\r\n")
+                _T("서버: %s-%s"),
         CString(pCharData->GetName().c_str()),
-        CString(pCharData->GetRealm().c_str()),
-        CString(pCharData->GetRegion().c_str()));
-    m_staticCharInfo.SetWindowText(info);
-
-    CString ilvl;
-    ilvl.Format(_T("Item Level: %.1f"), pCharData->GetItemLevel());
-    m_staticItemLevel.SetWindowText(ilvl);
-
-    CString spec;
-    spec.Format(_T("Class/Spec: %s / %s"),
         CString(pCharData->GetClassName().c_str()),
-        CString(pCharData->GetActiveSpecName().c_str()));
-    m_staticClassSpec.SetWindowText(spec);
+        CString(pCharData->GetActiveSpecName().c_str()),
+        pCharData->GetItemLevel(),
+        CString(pCharData->GetRegion().c_str()),
+        CString(pCharData->GetRealm().c_str()));
 
-    m_btnLoad.EnableWindow(TRUE);
+    m_staticCharInfo.SetWindowText(info);
 }
 
 void CCharInputPanel::ClearCharacterInfo()
 {
-    m_staticCharInfo.SetWindowText(_T("No character loaded"));
-    m_staticItemLevel.SetWindowText(_T("Item Level: --"));
-    m_staticClassSpec.SetWindowText(_T("Class/Spec: --"));
-    m_btnLoad.EnableWindow(TRUE);
-}
-
-BOOL CCharInputPanel::CreateNestedSplitter(CSimSettingsPanel** ppSettingsPanel)
-{
-    // Create a nested static splitter with 1 row, 2 columns
-    m_pNestedSplitter = new CSplitterWnd();
-
-    if (!m_pNestedSplitter->CreateStatic(this, 1, 2))
-    {
-        TRACE0("Failed to create nested splitter\n");
-        return FALSE;
-    }
-
-    CCreateContext context;
-    context.m_pNewViewClass = RUNTIME_CLASS(CSimSettingsPanel);
-    context.m_pCurrentFrame = AfxGetMainWnd();
-
-    CRect rect;
-    GetClientRect(&rect);
-
-    // Create the left pane (this panel) - actually the nested splitter does this automatically
-    // Create the right pane (settings panel)
-    if (!m_pNestedSplitter->CreateView(0, 1, RUNTIME_CLASS(CSimSettingsPanel),
-        CSize(rect.Width() / 2, rect.Height()), &context))
-    {
-        TRACE0("Failed to create settings panel\n");
-        return FALSE;
-    }
-
-    if (ppSettingsPanel)
-    {
-        *ppSettingsPanel = static_cast<CSimSettingsPanel*>(m_pNestedSplitter->GetPane(0, 1));
-    }
-
-    return TRUE;
+    m_staticCharInfo.SetWindowText(_T("로드된 프로필 없음"));
 }

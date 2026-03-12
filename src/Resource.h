@@ -19,14 +19,14 @@
 #define ID_BUTTON_SETTINGS              1104
 
 // Character Input Controls
-#define IDC_COMBO_REGION                2001
-#define IDC_EDIT_SERVER                 2002
-#define IDC_EDIT_CHARACTER              2003
-#define IDC_BUTTON_LOAD                 2004
-#define IDC_BUTTON_OAUTH                2005
-#define IDC_STATIC_CHAR_INFO            2006
-#define IDC_STATIC_ITEM_LEVEL           2007
-#define IDC_STATIC_CLASS_SPEC           2008
+#define IDC_EDIT_PROFILE                2001
+#define IDC_BUTTON_LOAD                 2002
+#define IDC_BUTTON_CLEAR                2003
+#define IDC_STATIC_CHAR_INFO            2004
+#define IDC_EDIT_DURATION_INPUT         2005
+#define IDC_COMBO_TARGETS_INPUT         2006
+#define IDC_STATIC_DURATION_LABEL       2007
+#define IDC_STATIC_TARGETS_LABEL        2008
 
 // Simulation Settings Controls
 #define IDC_COMBO_FIGHT_STYLE           2101
@@ -40,6 +40,14 @@
 #define IDC_CHECK_BLOODLUST             2114
 #define IDC_CHECK_POTION                2115
 
+// MIDNIGHT Expansion Options
+#define IDC_COMBO_TEMP_ENCHANT          2120
+#define IDC_CHECK_CRUCIBLE_VIOLENCE     2121
+#define IDC_CHECK_CRUCIBLE_SUSTENANCE   2122
+#define IDC_CHECK_CRUCIBLE_PREDATION    2123
+#define IDC_STATIC_TEMP_ENCHANT_LABEL   2124
+#define IDC_STATIC_CRUCIBLE_LABEL       2125
+
 // Results Controls
 #define IDC_LIST_RESULTS                2201
 #define IDC_EDIT_DPS                    2202
@@ -47,6 +55,9 @@
 #define IDC_BUTTON_COPY_RESULT          2204
 #define IDC_BUTTON_EXPORT_JSON          2205
 #define IDC_BUTTON_EXPORT_CSV           2206
+#define IDC_TAB_RESULTS                 2207
+#define IDC_LIST_ROTATION               2208
+#define IDC_LIST_ACTIONS                2209
 
 // Progress Controls
 #define IDC_PROGRESS_SIM                2301
@@ -58,12 +69,18 @@
 #define IDC_EDIT_CLIENT_ID              2403
 #define IDC_EDIT_CLIENT_SECRET          2404
 #define IDC_BUTTON_SAVE_SETTINGS        2405
+#define IDC_BUTTON_DOWNLOAD_SIMC        2406
+#define IDC_PROGRESS_DOWNLOAD           2407
+#define IDC_STATIC_DOWNLOAD_STATUS      2408
 
 // OAuth Dialog
 #define IDC_EDIT_AUTH_URL               2501
 #define IDC_EDIT_AUTH_CODE              2502
 #define IDC_BUTTON_OPEN_BROWSER         2503
 #define IDC_BUTTON_COMPLETE_AUTH        2504
+#define IDC_BUTTON_COPY_URL             2505
+#define IDC_PROGRESS_AUTH               2506
+#define IDC_STATIC_OAUTH_STATUS         2507
 
 // Preset Manager Dialog
 #define IDD_PRESET_MANAGER              103
@@ -93,6 +110,11 @@
 
 // Log Viewer Dialog
 #define IDD_LOG_VIEWER                  105
+
+// Form View IDs
+#define IDD_FORMVIEW_CHAR_INPUT         106
+#define IDD_FORMVIEW_SIM_SETTINGS       107
+#define IDD_FORMVIEW_RESULTS            108
 #define IDC_LIST_LOGS                   2901
 #define IDC_EDIT_LOG_DETAILS            2902
 #define IDC_COMBO_LOG_LEVEL             2903

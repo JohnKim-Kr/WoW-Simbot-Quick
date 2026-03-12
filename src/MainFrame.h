@@ -3,7 +3,6 @@
 #include "CharInputPanel.h"
 #include "SimSettingsPanel.h"
 #include "ResultsPanel.h"
-#include "BnetApiClient.h"
 #include "CharacterData.h"
 #include "SimcRunner.h"
 
@@ -11,9 +10,6 @@
 class CMainFrame : public CFrameWnd
 {
     DECLARE_DYNAMIC(CMainFrame)
-
-protected:
-    CSplitterWnd m_wndSplitter;
 
 public:
     CMainFrame() noexcept;
@@ -26,16 +22,14 @@ public:
 
     // Implementation
 public:
-    #ifdef _DEBUG
+#ifdef _DEBUG
     virtual void AssertValid() const;
     virtual void Dump(CDumpContext& dc) const;
-    #endif
+#endif
 
 protected:
     CStatusBar  m_wndStatusBar;
     CToolBar    m_wndToolBar;
-    CReBar      m_wndReBar;
-    CDialogBar  m_wndDlgBar;
 
     // Panel views
     CCharInputPanel*    m_pCharInputPanel;
@@ -43,7 +37,6 @@ protected:
     CResultsPanel*      m_pResultsPanel;
 
     // Core components
-    std::unique_ptr<CBnetApiClient> m_pApiClient;
     std::unique_ptr<CSimcRunner>   m_pSimcRunner;
     std::unique_ptr<CCharacterData> m_pCharacterData;
 
@@ -52,15 +45,14 @@ protected:
     afx_msg int OnCreate(LPCREATESTRUCT lpCreateStruct);
     afx_msg void OnSetFocus(CWnd* pOldWnd);
     afx_msg void OnSize(UINT nType, int cx, int cy);
-    afx_msg LRESULT OnUserApiCharacterLoaded(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnUserSimProgress(WPARAM wParam, LPARAM lParam);
     afx_msg LRESULT OnUserSimComplete(WPARAM wParam, LPARAM lParam);
     afx_msg void OnSettingsChanged();
     DECLARE_MESSAGE_MAP()
 
 public:
-    // Character loading
-    BOOL LoadCharacter(const CString& region, const CString& server, const CString& characterName);
+    // Profile parsing from simc addon
+    BOOL ParseSimcProfile(const std::string& profileStr);
     void OnCharacterLoaded();
 
     // Simulation control
@@ -68,8 +60,7 @@ public:
     void StopSimulation();
     void OnSimulationComplete(const CString& resultJson);
 
-    // API Access
-    CBnetApiClient* GetApiClient() const { return m_pApiClient.get(); }
+    // Character data access
     CCharacterData* GetCharacterData() const { return m_pCharacterData.get(); }
 
     // UI Updates
@@ -90,6 +81,5 @@ public:
 };
 
 // Custom window messages
-#define WM_USER_API_CHAR_LOADED (WM_USER + 100)
 #define WM_USER_SIM_PROGRESS    (WM_USER + 101)
 #define WM_USER_SIM_COMPLETE    (WM_USER + 102)

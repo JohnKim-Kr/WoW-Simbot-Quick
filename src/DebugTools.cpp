@@ -1,11 +1,20 @@
+﻿// Suppress deprecated API warnings for networking
+#define _WINSOCK_DEPRECATED_NO_WARNINGS
+
 #include "pch.h"
 #include "framework.h"
+
 #include "DebugTools.h"
 #include "Logger.h"
 #include "SimbotQuick.h"
-#include "BnetApiClient.h"
+
+#include <psapi.h>
+#include <winsock2.h>
+#include <ws2tcpip.h>
+#include <windows.h>
 
 #pragma comment(lib, "psapi.lib")
+#pragma comment(lib, "ws2_32.lib")
 
 CDebugTools* CDebugTools::s_instance = nullptr;
 
@@ -170,7 +179,7 @@ BOOL CDebugTools::TestSimcInstallation(const CString& simcPath, CString& outVers
 
     // 버전 확인 실행
     CString cmdLine;
-    cmdLine.Format(_T(""%s" --version"), simcPath);
+    cmdLine.Format(_T("\"%%s\" --version"), simcPath);
 
     SECURITY_ATTRIBUTES sa;
     sa.nLength = sizeof(sa);
@@ -293,31 +302,7 @@ BOOL CDebugTools::TestNetworkConnection(const CString& host, int port, int timeo
     return TRUE;
 }
 
-BOOL CDebugTools::TestBnetApi(const CString& clientId, const CString& clientSecret, CString& outError)
-{
-    if (clientId.IsEmpty() || clientSecret.IsEmpty())
-    {
-        outError = _T("Client ID와 Client Secret이 필요합니다.");
-        return FALSE;
-    }
-
-    CBnetApiClient client;
-    if (!client.Initialize())
-    {
-        outError = _T("API 클라이언트 초기화 실패");
-        return FALSE;
-    }
-
-    if (!client.Authenticate(clientId, clientSecret))
-    {
-        outError = _T("인증 실패: ") + client.GetLastErrorString();
-        return FALSE;
-    }
-
-    return TRUE;
-}
-
-BOOL CDebugTools::ValidateSettings(CString& outReport)
+BOOL CDebugTools::ValidateSettings(CString& outReport) const
 {
     BOOL allValid = TRUE;
     outReport = _T("=== 설정 유효성 검사 ===\r\n\r\n");
@@ -330,7 +315,7 @@ BOOL CDebugTools::ValidateSettings(CString& outReport)
     }
 
     // simc 경로 검사
-    CString simcPath = pApp->GetSimcPath();
+    CString simcPath = pApp->m_strSimcPath;
     if (simcPath.IsEmpty())
     {
         outReport += _T("[경고] simc.exe 경로가 설정되지 않았습니다.\r\n");
@@ -344,17 +329,6 @@ BOOL CDebugTools::ValidateSettings(CString& outReport)
     else
     {
         outReport += _T("[정상] simc.exe 경로\r\n");
-    }
-
-    // API 키 검사
-    CString clientId = pApp->GetBnetClientId();
-    if (clientId.IsEmpty())
-    {
-        outReport += _T("[정보] Battle.net API Client ID가 설정되지 않았습니다. (선택사항)\r\n");
-    }
-    else
-    {
-        outReport += _T("[정상] Battle.net API Client ID 설정됨\r\n");
     }
 
     outReport += _T("\r\n");
@@ -372,14 +346,14 @@ CString CDebugTools::GetSystemInfo() const
     ZeroMemory(&osvi, sizeof(OSVERSIONINFOEX));
     osvi.dwOSVersionInfoSize = sizeof(OSVERSIONINFOEX);
 
-    typedef NTSTATUS(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
+    typedef LONG(WINAPI* RtlGetVersionPtr)(PRTL_OSVERSIONINFOW);
     HMODULE hNtdll = GetModuleHandle(_T("ntdll.dll"));
     if (hNtdll)
     {
         RtlGetVersionPtr RtlGetVersion = (RtlGetVersionPtr)GetProcAddress(hNtdll, "RtlGetVersion");
         if (RtlGetVersion)
         {
-            RtlGetVersion(&osvi);
+            RtlGetVersion((PRTL_OSVERSIONINFOW)&osvi);
         }
     }
 
@@ -388,7 +362,7 @@ CString CDebugTools::GetSystemInfo() const
 
     // 프로세서 정보
     SYSTEM_INFO sysInfo;
-    GetSystemInfo(&sysInfo);
+    ::GetSystemInfo(&sysInfo);
     info.AppendFormat(_T("프로세서 수: %lu\r\n"), sysInfo.dwNumberOfProcessors);
 
     // 디스플레이 정보

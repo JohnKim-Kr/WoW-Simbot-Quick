@@ -1,4 +1,4 @@
-#pragma once
+﻿#pragma once
 
 // 로그 레벨 정의
 enum class LogLevel
@@ -43,6 +43,7 @@ struct LogEntry
     CString ToString() const;
     CString GetLevelString() const;
     CString GetCategoryString() const;
+    CString GetTimestampString() const { return timestamp.Format(_T("%Y-%m-%d %H:%M:%S")); }
 };
 
 // 로그 콜백 타입
@@ -101,8 +102,8 @@ public:
     BOOL ArchiveLogs(const CString& archivePath);
 
     // 로그 내용 읽기
-    CString GetRecentLogs(int count = 100) const;
-    BOOL ExportLogs(const CString& filePath, int maxEntries = 0) const;
+    CString GetRecentLogs(int count = 100);
+    BOOL ExportLogs(const CString& filePath, int maxEntries = 0);
 
     // 통계
     int GetTotalLogCount() const { return m_totalLogCount; }
@@ -135,6 +136,11 @@ private:
     // 로그 레벨 문자열
     static CString LevelToString(LogLevel level);
     static CString CategoryToString(LogCategory category);
+
+    // Export helpers
+    BOOL ExportLogsToCsv(const CString& filePath, int maxEntries);
+    BOOL ExportLogsToJson(const CString& filePath, int maxEntries);
+    BOOL ExportLogsToText(const CString& filePath, int maxEntries);
 
 private:
     // 설정

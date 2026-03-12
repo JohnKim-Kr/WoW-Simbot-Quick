@@ -1,20 +1,22 @@
-
-// MainFrame.cpp : implementation of the CMainFrame class
-//
-
 #include "pch.h"
 #include "framework.h"
 #include "SimbotQuick.h"
 #include "MainFrame.h"
+#include "CharInputPanel.h"
+#include "ResultsPanel.h"
+#include "SimSettingsPanel.h"
 #include "SettingsManager.h"
 #include "ResultHistoryManager.h"
 #include "CharacterData.h"
+#include "SimcParser.h"
+#include <filesystem>
+#include <thread>
+
+namespace fs = std::filesystem;
 
 #ifdef _DEBUG
 #define new DEBUG_NEW
 #endif
-
-// CMainFrame
 
 IMPLEMENT_DYNAMIC(CMainFrame, CFrameWnd)
 
@@ -22,478 +24,213 @@ BEGIN_MESSAGE_MAP(CMainFrame, CFrameWnd)
     ON_WM_CREATE()
     ON_WM_SETFOCUS()
     ON_WM_SIZE()
-    ON_MESSAGE(WM_USER_API_CHAR_LOADED, &CMainFrame::OnUserApiCharacterLoaded)
     ON_MESSAGE(WM_USER_SIM_PROGRESS, &CMainFrame::OnUserSimProgress)
     ON_MESSAGE(WM_USER_SIM_COMPLETE, &CMainFrame::OnUserSimComplete)
     ON_COMMAND(ID_SETTINGS_CHANGED, &CMainFrame::OnSettingsChanged)
 END_MESSAGE_MAP()
 
-static UINT indicators[] =
-{
-    ID_SEPARATOR,           // status line indicator
-    ID_INDICATOR_CAPS,
-    ID_INDICATOR_NUM,
-    ID_INDICATOR_SCRL,
-};
+static UINT indicators[] = { ID_SEPARATOR };
 
-// CMainFrame construction/destruction
-
-CMainFrame::CMainFrame() noexcept
-    : m_pCharInputPanel(nullptr)
-    , m_pSimSettingsPanel(nullptr)
-    , m_pResultsPanel(nullptr)
+CMainFrame::CMainFrame() noexcept : m_pCharInputPanel(nullptr), m_pSimSettingsPanel(nullptr), m_pResultsPanel(nullptr)
 {
-    // Initialize core components
-    m_pApiClient = std::make_unique<CBnetApiClient>();
     m_pSimcRunner = std::make_unique<CSimcRunner>();
     m_pCharacterData = std::make_unique<CCharacterData>();
 }
 
-CMainFrame::~CMainFrame()
-{
-}
+CMainFrame::~CMainFrame() {}
 
 int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
-    if (CFrameWnd::OnCreate(lpCreateStruct) == -1)
-        return -1;
-
-    // Create status bar
-    if (!m_wndStatusBar.Create(this))
-    {
-        TRACE0("Failed to create status bar\n");
-        return -1;
-    }
-    m_wndStatusBar.SetIndicators(indicators, sizeof(indicators) / sizeof(UINT));
-
-    // Create toolbar
-    if (!m_wndToolBar.CreateEx(this, TBSTYLE_FLAT, WS_CHILD | WS_VISIBLE | CBRS_TOP | CBRS_GRIPPER | CBRS_TOOLTIPS | CBRS_FLYBY | CBRS_SIZE_DYNAMIC) ||
-        !m_wndToolBar.LoadToolBar(IDR_MAINFRAME))
-    {
-        TRACE0("Failed to create toolbar\n");
-        return -1;
-    }
-
-    // Create rebar
-    if (!m_wndReBar.Create(this) ||
-        !m_wndReBar.AddBar(&m_wndToolBar))
-    {
-        TRACE0("Failed to create rebar\n");
-        return -1;
-    }
-
-    // Set toolbar styles
-    m_wndToolBar.EnableDocking(CBRS_ALIGN_ANY);
-    EnableDocking(CBRS_ALIGN_ANY);
-    DockPane(&m_wndToolBar);
-
-    // Set main window properties
+    if (CFrameWnd::OnCreate(lpCreateStruct) == -1) return -1;
+    if (!m_wndStatusBar.Create(this)) return -1;
+    m_wndStatusBar.SetIndicators(indicators, 1);
     SetWindowText(_T("WoW Simbot Quick"));
-
-    // Initialize status
     UpdateStatus(_T("Ready"));
-
     return 0;
 }
 
-BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT /*lpcs*/, CCreateContext* pContext)
+BOOL CMainFrame::OnCreateClient(LPCREATESTRUCT lp, CCreateContext* pContext)
 {
-    // Create a static splitter with 2 rows
-    if (!m_wndSplitter.CreateStatic(this, 2, 1))
-    {
-        TRACE0("Failed to create splitter\n");
-        return FALSE;
-    }
+    CRect r; GetClientRect(&r);
+    
+    // Create views manually without splitters
+    m_pCharInputPanel = new CCharInputPanel();
+    if (!m_pCharInputPanel->Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, r, this, 20001, pContext)) return FALSE;
+    
+    m_pResultsPanel = new CResultsPanel();
+    if (!m_pResultsPanel->Create(NULL, NULL, WS_CHILD | WS_VISIBLE | WS_CLIPSIBLINGS, r, this, 20002, pContext)) return FALSE;
+    
+    m_pSimSettingsPanel = (CSimSettingsPanel*)RUNTIME_CLASS(CSimSettingsPanel)->CreateObject();
+    if (!m_pSimSettingsPanel->CreateView(this, 20003, pContext)) return FALSE;
 
-    // Get client area size
-    CRect rect;
-    GetClientRect(&rect);
-
-    int topHeight = rect.Height() * 2 / 3;
-    int bottomHeight = rect.Height() - topHeight;
-
-    // Create the top splitter (nested for left/right panels)
-    CRect topRect(0, 0, rect.Width(), topHeight);
-
-    // First row: Create a nested splitter for char input and sim settings
-    if (!m_wndSplitter.CreateView(0, 0, RUNTIME_CLASS(CCharInputPanel), CSize(rect.Width() / 2, topHeight), pContext))
-    {
-        TRACE0("Failed to create character input panel\n");
-        m_wndSplitter.DestroyWindow();
-        return FALSE;
-    }
-
-    // Second row: Results panel
-    if (!m_wndSplitter.CreateView(1, 0, RUNTIME_CLASS(CResultsPanel), CSize(rect.Width(), bottomHeight), pContext))
-    {
-        TRACE0("Failed to create results panel\n");
-        m_wndSplitter.DestroyWindow();
-        return FALSE;
-    }
-
-    // Store panel pointers
-    m_pCharInputPanel = static_cast<CCharInputPanel*>(m_wndSplitter.GetPane(0, 0));
-    m_pResultsPanel = static_cast<CResultsPanel*>(m_wndSplitter.GetPane(1, 0));
-
-    // Create a nested splitter in the top row for left/right panels
-    if (m_pCharInputPanel)
-    {
-        CCreateContext nestedContext;
-        nestedContext.m_pCurrentFrame = this;
-        nestedContext.m_pCurrentDoc = pContext->m_pCurrentDoc;
-        nestedContext.m_pNewDocTemplate = pContext->m_pNewDocTemplate;
-
-        if (!m_pCharInputPanel->CreateNestedSplitter(&m_pSimSettingsPanel))
-        {
-            TRACE0("Failed to create nested splitter for settings panel\n");
-        }
-    }
+    // Manually trigger initial updates since we are not using standard MFC frame logic
+    if (m_pCharInputPanel) m_pCharInputPanel->SendMessage(WM_INITIALUPDATE);
+    if (m_pResultsPanel) m_pResultsPanel->SendMessage(WM_INITIALUPDATE);
+    if (m_pSimSettingsPanel) m_pSimSettingsPanel->SendMessage(WM_INITIALUPDATE);
 
     return TRUE;
 }
 
 BOOL CMainFrame::PreCreateWindow(CREATESTRUCT& cs)
 {
-    if (!CFrameWnd::PreCreateWindow(cs))
-        return FALSE;
-
-    cs.dwExStyle &= ~WS_EX_CLIENTEDGE;
-    cs.lpszClass = AfxRegisterWndClass(0);
-
-    // Set initial window size
-    cs.cx = 1200;
-    cs.cy = 900;
-
-    return TRUE;
+    if (!CFrameWnd::PreCreateWindow(cs)) return FALSE;
+    cs.cx = 1200; cs.cy = 900; return TRUE;
 }
 
-// CMainFrame diagnostics
-
-#ifdef _DEBUG
-void CMainFrame::AssertValid() const
-{
-    CFrameWnd::AssertValid();
-}
-
-void CMainFrame::Dump(CDumpContext& dc) const
-{
-    CFrameWnd::Dump(dc);
-}
-#endif //_DEBUG
-
-// CMainFrame message handlers
-
-void CMainFrame::OnSetFocus(CWnd* /*pOldWnd*/)
-{
-    // forward focus to the view window
-    if (m_pCharInputPanel)
-        m_pCharInputPanel->SetFocus();
-}
+void CMainFrame::OnSetFocus(CWnd*) { if (m_pCharInputPanel) m_pCharInputPanel->SetFocus(); }
 
 void CMainFrame::OnSize(UINT nType, int cx, int cy)
 {
     CFrameWnd::OnSize(nType, cx, cy);
+    if (cx <= 0 || cy <= 0) return;
 
-    // Adjust splitter row heights
-    if (m_wndSplitter.GetSafeHwnd() && cy > 0)
+    // Position the status bar and get its height
+    if (m_wndStatusBar.GetSafeHwnd())
     {
-        int topHeight = cy * 2 / 3;
-        int bottomHeight = cy - topHeight - m_wndSplitter.GetRowInfo(0);
-        m_wndSplitter.SetRowInfo(0, topHeight, 100);
-        m_wndSplitter.SetRowInfo(1, bottomHeight, 100);
-        m_wndSplitter.RecalcLayout();
+        m_wndStatusBar.SendMessage(WM_SIZE, nType, MAKELPARAM(cx, cy));
+        CRect rectStatus;
+        m_wndStatusBar.GetWindowRect(&rectStatus);
+        cy -= rectStatus.Height();
     }
+
+    int lw = cx * 2 / 3;
+    int th = cy * 2 / 3;
+
+    if (m_pCharInputPanel && m_pCharInputPanel->GetSafeHwnd())
+        m_pCharInputPanel->MoveWindow(0, 0, lw, th);
+
+    if (m_pResultsPanel && m_pResultsPanel->GetSafeHwnd())
+        m_pResultsPanel->MoveWindow(0, th, lw, cy - th);
+
+    if (m_pSimSettingsPanel && m_pSimSettingsPanel->GetSafeHwnd())
+        m_pSimSettingsPanel->MoveWindow(lw, 0, cx - lw, cy);
 }
 
-// Character loading
-BOOL CMainFrame::LoadCharacter(const CString& region, const CString& server, const CString& characterName)
+BOOL CMainFrame::ParseSimcProfile(const std::string& str)
 {
-    UpdateStatus(_T("Loading character..."));
-
-    if (!m_pApiClient)
+    UpdateStatus(_T("프로필 파싱 중..."));
+    if (m_pCharacterData) m_pCharacterData->Clear();
+    CSimcParser parser;
+    if (!parser.Parse(str, m_pCharacterData.get()))
     {
-        UpdateStatus(_T("API client not initialized"));
+        UpdateStatus(_T("파싱 실패"));
         return FALSE;
     }
-
-    // Start async character load
-    std::thread([this, region, server, characterName]() {
-        BOOL success = m_pApiClient->FetchCharacter(
-            CT2A(region), CT2A(server), CT2A(characterName), m_pCharacterData.get());
-
-        // Post message back to UI thread
-        PostMessage(WM_USER_API_CHAR_LOADED, success ? 1 : 0, 0);
-    }).detach();
-
+    OnCharacterLoaded(); 
+    UpdateStatus(_T("준비됨"));
     return TRUE;
 }
 
 void CMainFrame::OnCharacterLoaded()
 {
-    if (m_pCharacterData && m_pCharacterData->IsValid())
-    {
-        UpdateStatus(_T("Character loaded successfully"));
-
-        if (m_pCharInputPanel)
-        {
-            m_pCharInputPanel->DisplayCharacterInfo(m_pCharacterData.get());
-        }
-    }
-    else
-    {
-        UpdateStatus(_T("Failed to load character"));
-        AfxMessageBox(_T("Failed to load character data. Please check your settings and try again."), MB_ICONERROR);
+    if (m_pCharacterData && m_pCharacterData->IsValid()) {
+        CSettingsManager* pMgr = GetSettingsManager();
+        if (pMgr) { pMgr->GetCurrentSettings() = m_pCharacterData->GetSettings(); if (m_pSimSettingsPanel) m_pSimSettingsPanel->LoadSettingsFromManager(); }
+        if (m_pCharInputPanel) m_pCharInputPanel->DisplayCharacterInfo(m_pCharacterData.get());
     }
 }
 
-// Simulation control
 void CMainFrame::StartSimulation()
 {
     if (!m_pCharacterData || !m_pCharacterData->IsValid())
     {
-        AfxMessageBox(_T("Please load a character first."), MB_ICONWARNING);
+        AfxMessageBox(_T("먼저 프로필을 파싱해 주세요."), MB_ICONWARNING);
         return;
     }
 
-    CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
-    CString simcPath = pApp->GetSimcPath();
-
-    if (simcPath.IsEmpty() || !fs::exists(CT2A(simcPath)))
+    CWoWSimbotQuickApp* pApp = (CWoWSimbotQuickApp*)AfxGetApp();
+    if (pApp->m_strSimcPath.IsEmpty())
     {
-        AfxMessageBox(_T("Please configure simc.exe path in Settings first."), MB_ICONWARNING);
-        return;
+        AfxMessageBox(_T("시뮬레이션을 시작하기 전에 simc.exe 경로를 설정해야 합니다."), MB_ICONINFORMATION);
+        pApp->OnFileSettings();
+        if (pApp->m_strSimcPath.IsEmpty()) return;
     }
 
-    // 현재 UI 설정을 SettingsManager에 저장
-    if (m_pSimSettingsPanel)
-    {
-        m_pSimSettingsPanel->SaveSettingsToManager();
-    }
-
-    pApp->SetSimRunning(TRUE);
-    UpdateStatus(_T("Starting simulation..."));
+    if (m_pSimSettingsPanel) m_pSimSettingsPanel->SaveSettingsToManager();
+    pApp->m_bSimRunning = TRUE; 
     SetProgress(0);
+    UpdateStatus(_T("시뮬레이션 중..."));
 
-    // Build simc profile
     CString profile = m_pCharacterData->ToSimcProfile();
-
-    // Add simulation options from SettingsManager
     CSettingsManager* pMgr = GetSettingsManager();
-    if (pMgr)
-    {
-        profile += _T("\n");
+    CString out;
+    if (pMgr) {
+        profile += _T("\n"); 
         profile += pMgr->GenerateSimcOptions();
-        profile += _T("json=sim_result.json\n");
-    }
+        TCHAR tmp[MAX_PATH]; GetTempPath(MAX_PATH, tmp);
+        out.Format(_T("%s\\sim_result.json"), tmp);
+        CString line; line.Format(_T("json=%s\n"), (LPCTSTR)out);
+        profile += line;
+    } else out = _T("sim_result.json");
 
-    // Start simc in a separate thread
-    std::thread([this, simcPath, profile]() {
-        CString outputFile = _T("sim_result.json");
-        BOOL success = m_pSimcRunner->RunSimulation(
-            simcPath, profile, outputFile,
-            [this](int progress) {
-                PostMessage(WM_USER_SIM_PROGRESS, progress, 0);
-            });
-
-        PostMessage(WM_USER_SIM_COMPLETE, success ? 1 : 0, (LPARAM)new CString(outputFile));
+    std::thread([this, pApp, profile, out]() {
+        BOOL ok = m_pSimcRunner->RunSimulation(pApp->m_strSimcPath, profile, out, [this](int p) { PostMessage(WM_USER_SIM_PROGRESS, (WPARAM)p, 0); });
+        WPARAM wp = (ok ? 1 : 0);
+        PostMessage(WM_USER_SIM_COMPLETE, wp, (LPARAM)new CString(out.GetString()));
     }).detach();
 }
 
-void CMainFrame::StopSimulation()
+void CMainFrame::StopSimulation() { if (m_pSimcRunner) m_pSimcRunner->Cancel(); ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; }
+
+void CMainFrame::OnSimulationComplete(const CString& res)
 {
-    if (m_pSimcRunner)
-    {
-        m_pSimcRunner->Cancel();
-        UpdateStatus(_T("Simulation cancelled"));
-    }
-
-    CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
-    pApp->SetSimRunning(FALSE);
-}
-
-void CMainFrame::OnSimulationComplete(const CString& resultJson)
-{
-    CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
-    pApp->SetSimRunning(FALSE);
-    SetProgress(100);
-
-    // Parse simc JSON
-    CResultHistoryManager* pHistoryMgr = GetResultHistoryManager();
-    if (pHistoryMgr)
-    {
-        CSimResult result;
-        if (pHistoryMgr->ParseSimcJson(resultJson, result))
-        {
-            // 빌드 정보 설정
-            if (m_pCharacterData)
-            {
-                result.GetBuildInfo().characterName = m_pCharacterData->GetName();
-                result.GetBuildInfo().server = m_pCharacterData->GetRealm();
-                result.GetBuildInfo().region = m_pCharacterData->GetRegion();
-                result.GetBuildInfo().className = m_pCharacterData->GetClassName();
-                result.GetBuildInfo().specName = m_pCharacterData->GetActiveSpecName();
-                result.GetBuildInfo().itemLevel = m_pCharacterData->GetItemLevel();
+    ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; SetProgress(100);
+    CResultHistoryManager* h = GetResultHistoryManager();
+    if (h) {
+        CSimResult r;
+        if (h->ParseSimcJson(res, r)) {
+            if (m_pCharacterData) {
+                r.GetBuildInfo().characterName = CString(m_pCharacterData->GetName().c_str());
+                r.GetBuildInfo().server = CString(m_pCharacterData->GetRealm().c_str());
+                r.GetBuildInfo().region = CString(m_pCharacterData->GetRegion().c_str());
+                r.GetBuildInfo().className = CString(m_pCharacterData->GetClassName().c_str());
+                r.GetBuildInfo().specName = CString(m_pCharacterData->GetActiveSpecName().c_str());
+                r.GetBuildInfo().itemLevel = m_pCharacterData->GetItemLevel();
             }
-
-            // 시뮬레이션 설정 복사
-            CSettingsManager* pSettingsMgr = GetSettingsManager();
-            if (pSettingsMgr)
-            {
-                const SimulationSettings& settings = pSettingsMgr->GetCurrentSettings();
-                result.SetFightStyle(settings.fightStyle);
-                result.SetDuration(settings.duration);
-                result.SetIterations(settings.iterations);
-            }
-
-            // 히스토리에 저장
-            pHistoryMgr->AddResult(result);
+            CSettingsManager* s = GetSettingsManager();
+            if (s) { r.SetFightStyle(s->GetCurrentSettings().fightStyle); r.SetDuration(s->GetCurrentSettings().duration); r.SetIterations(s->GetCurrentSettings().iterations); }
+            h->AddResult(r);
         }
     }
-
-    // Parse and display results
-    if (m_pResultsPanel)
-    {
-        m_pResultsPanel->LoadResults(resultJson);
-    }
-
-    UpdateStatus(_T("Simulation complete"));
+    if (m_pResultsPanel) m_pResultsPanel->LoadResults(res);
+    UpdateStatus(_T("Complete"));
 }
 
-// Message handlers
-LRESULT CMainFrame::OnUserApiCharacterLoaded(WPARAM wParam, LPARAM /*lParam*/)
+LRESULT CMainFrame::OnUserSimProgress(WPARAM wp, LPARAM) { int p = (int)wp; SetProgress(p); return 0; }
+void CMainFrame::OnSettingsChanged() { if (m_pSimSettingsPanel) m_pSimSettingsPanel->LoadSettingsFromManager(); }
+
+LRESULT CMainFrame::OnUserSimComplete(WPARAM wp, LPARAM lp)
 {
-    if (wParam)
+    CString* p = (CString*)lp;
+    if (wp != 0 && p != nullptr) 
     {
-        OnCharacterLoaded();
+        OnSimulationComplete(*p);
     }
-    else
-    {
-        UpdateStatus(_T("Failed to load character"));
+    else 
+    { 
+        ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; 
+        UpdateStatus(_T("시뮬레이션 실패"));
+        AfxMessageBox(_T("시뮬레이션 실행 중 오류가 발생했습니다. simc.exe 경로와 프로필 내용을 확인해 주세요."), MB_ICONERROR);
     }
+    if (p != nullptr) delete p;
     return 0;
 }
 
-LRESULT CMainFrame::OnUserSimProgress(WPARAM wParam, LPARAM /*lParam*/)
-{
-    int progress = static_cast<int>(wParam);
-    SetProgress(progress);
-
-    CString status;
-    status.Format(_T("Simulating... %d%%"), progress);
-    UpdateStatus(status);
-
-    return 0;
-}
-
-void CMainFrame::OnSettingsChanged()
-{
-    // 설정이 변경되었을 때 UI 업데이트
-    if (m_pSimSettingsPanel)
+void CMainFrame::UpdateStatus(const CString& m) 
+{ 
+    if (m_wndStatusBar.GetSafeHwnd())
     {
-        m_pSimSettingsPanel->LoadSettingsFromManager();
+        m_wndStatusBar.SetPaneText(0, m); 
     }
 }
-
-LRESULT CMainFrame::OnUserSimComplete(WPARAM wParam, LPARAM lParam)
-{
-    CString* pResultFile = reinterpret_cast<CString*>(lParam);
-
-    if (wParam && pResultFile)
-    {
-        OnSimulationComplete(*pResultFile);
-    }
-    else
-    {
-        UpdateStatus(_T("Simulation failed"));
-        CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
-        pApp->SetSimRunning(FALSE);
-    }
-
-    delete pResultFile;
-    return 0;
-}
-
-// UI Updates
-void CMainFrame::UpdateStatus(const CString& message)
-{
-    m_wndStatusBar.SetPaneText(0, message);
-}
-
-void CMainFrame::SetProgress(int percent)
-{
-    if (m_pResultsPanel)
-    {
-        m_pResultsPanel->SetProgress(percent);
-    }
-}
-
-// Sim options accessors
-CString CMainFrame::GetFightStyle() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetFightStyle();
-    return _T("patchwerk");
-}
-
-int CMainFrame::GetDuration() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetDuration();
-    return 300;
-}
-
-int CMainFrame::GetIterations() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetIterations();
-    return 10000;
-}
-
-int CMainFrame::GetTargetCount() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetTargetCount();
-    return 1;
-}
-
-BOOL CMainFrame::GetUseFlask() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUseFlask();
-    return TRUE;
-}
-
-BOOL CMainFrame::GetUseFood() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUseFood();
-    return TRUE;
-}
-
-BOOL CMainFrame::GetUseRune() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUseRune();
-    return TRUE;
-}
-
-BOOL CMainFrame::GetUseAugment() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUseAugment();
-    return TRUE;
-}
-
-BOOL CMainFrame::GetUseBloodlust() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUseBloodlust();
-    return TRUE;
-}
-
-BOOL CMainFrame::GetUsePotion() const
-{
-    if (m_pSimSettingsPanel)
-        return m_pSimSettingsPanel->GetUsePotion();
-    return TRUE;
-}
+void CMainFrame::SetProgress(int p) { if (m_pResultsPanel) m_pResultsPanel->SetProgress(p); }
+CString CMainFrame::GetFightStyle() const { if (m_pSimSettingsPanel) return m_pSimSettingsPanel->GetFightStyle(); return _T("patchwerk"); }
+int CMainFrame::GetDuration() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetDuration() : 300; }
+int CMainFrame::GetIterations() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetIterations() : 10000; }
+int CMainFrame::GetTargetCount() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetTargetCount() : 1; }
+BOOL CMainFrame::GetUseFlask() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseFlask() : TRUE; }
+BOOL CMainFrame::GetUseFood() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseFood() : TRUE; }
+BOOL CMainFrame::GetUseRune() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseRune() : TRUE; }
+BOOL CMainFrame::GetUseAugment() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseAugment() : TRUE; }
+BOOL CMainFrame::GetUseBloodlust() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseBloodlust() : TRUE; }
+BOOL CMainFrame::GetUsePotion() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUsePotion() : TRUE; }

@@ -1,4 +1,6 @@
-#pragma once
+﻿#pragma once
+
+#include "Logger.h"
 
 // 로그 뷰어 대화상자
 class CLogViewerDlg : public CDialogEx
@@ -32,6 +34,8 @@ protected:
     void RefreshLogList();
     void FilterLogs();
     void SetupLogColumns();
+    BOOL ShouldShowLog(const CString& line, int levelSel, int catSel);
+    void AddLogLineToList(const CString& line);
 
     DECLARE_MESSAGE_MAP()
 
