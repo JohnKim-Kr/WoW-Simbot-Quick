@@ -14,13 +14,6 @@ BEGIN
     BEGIN
         MENUITEM "종료(&X)", 1001
     END
-    POPUP "도구(&T)"
-    BEGIN
-        MENUITEM "시뮬레이션 실행(&R)\tCtrl+R", 1101
-        MENUITEM "시뮬레이션 중단(&S)\tCtrl+Break", 1102
-        MENUITEM SEPARATOR
-        MENUITEM "설정(&S)...", 1002
-    END
 END
 
 101 DIALOGEX 0, 0, 350, 180

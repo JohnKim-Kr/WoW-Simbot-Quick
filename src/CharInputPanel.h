@@ -26,7 +26,7 @@ protected:
     CButton     m_btnParse;
     CButton     m_btnClear;
     CButton     m_btnSettings;
-    CStatic     m_staticCharInfo;
+    CButton     m_btnSimControl;
 
     // Data
     CString     m_strProfile;
@@ -37,6 +37,9 @@ public:
     afx_msg void OnBnClickedButtonParse();
     afx_msg void OnBnClickedButtonClear();
     afx_msg void OnBnClickedButtonSettings();
+    afx_msg void OnBnClickedButtonSimControl();
+
+    void UpdateSimButtonState(BOOL bRunning);
 
     void ParseSimcProfile();
     void ClearProfile();

@@ -14,6 +14,7 @@ BEGIN_MESSAGE_MAP(CCharInputPanel, CView)
     ON_BN_CLICKED(IDC_BUTTON_LOAD, &CCharInputPanel::OnBnClickedButtonParse)
     ON_BN_CLICKED(IDC_BUTTON_CLEAR, &CCharInputPanel::OnBnClickedButtonClear)
     ON_BN_CLICKED(ID_BUTTON_SETTINGS, &CCharInputPanel::OnBnClickedButtonSettings)
+    ON_BN_CLICKED(ID_BUTTON_RUN_SIM, &CCharInputPanel::OnBnClickedButtonSimControl)
 END_MESSAGE_MAP()
 
 CCharInputPanel::CCharInputPanel()
@@ -68,8 +69,8 @@ int CCharInputPanel::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
     y += h + 5;
 
-    if (!m_staticCharInfo.Create(_T("로드된 프로필 없음"), WS_CHILD | WS_VISIBLE | SS_LEFT,
-        CRect(x, y, x + w, rect.Height() - y), this, IDC_STATIC_CHAR_INFO))
+    if (!m_btnSimControl.Create(_T("시뮬레이션 시작"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
+        CRect(x, y, x + w, y + h), this, ID_BUTTON_RUN_SIM))
         return -1;
 
     return 0;
@@ -92,8 +93,7 @@ void CCharInputPanel::OnSize(UINT nType, int cx, int cy)
         y += h + 5;
         m_btnSettings.MoveWindow(x, y, w, h);
         y += h + 5;
-
-        m_staticCharInfo.MoveWindow(x, y, w, cy - y - 10);
+        m_btnSimControl.MoveWindow(x, y, w, h);
     }
 }
 
@@ -118,6 +118,31 @@ void CCharInputPanel::OnBnClickedButtonSettings()
     if (pApp)
     {
         pApp->OnFileSettings();
+    }
+}
+
+void CCharInputPanel::OnBnClickedButtonSimControl()
+{
+    CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
+    if (pApp)
+    {
+        if (pApp->IsSimRunning())
+        {
+            pApp->OnToolsStopSim();
+        }
+        else
+        {
+            pApp->OnToolsRunSim();
+        }
+        UpdateSimButtonState(pApp->IsSimRunning());
+    }
+}
+
+void CCharInputPanel::UpdateSimButtonState(BOOL bRunning)
+{
+    if (m_btnSimControl.GetSafeHwnd())
+    {
+        m_btnSimControl.SetWindowText(bRunning ? _T("시뮬레이션 중단") : _T("시뮬레이션 시작"));
     }
 }
 
@@ -160,29 +185,9 @@ void CCharInputPanel::ClearProfile()
 
 void CCharInputPanel::DisplayCharacterInfo(const CCharacterData* pCharData)
 {
-    if (!pCharData)
-    {
-        ClearCharacterInfo();
-        return;
-    }
-
-    CString info;
-    info.Format(_T("캐릭터: %s\r\n")
-                _T("직업: %s\r\n")
-                _T("전문화: %s\r\n")
-                _T("아이템 레벨: %.1f\r\n")
-                _T("서버: %s-%s"),
-        CString(pCharData->GetName().c_str()),
-        CString(pCharData->GetClassName().c_str()),
-        CString(pCharData->GetActiveSpecName().c_str()),
-        pCharData->GetItemLevel(),
-        CString(pCharData->GetRegion().c_str()),
-        CString(pCharData->GetRealm().c_str()));
-
-    m_staticCharInfo.SetWindowText(info);
+    // Information display removed as per requirement.
 }
 
 void CCharInputPanel::ClearCharacterInfo()
 {
-    m_staticCharInfo.SetWindowText(_T("로드된 프로필 없음"));
 }

@@ -148,6 +148,7 @@ void CMainFrame::StartSimulation()
 
     if (m_pSimSettingsPanel) m_pSimSettingsPanel->SaveSettingsToManager();
     pApp->m_bSimRunning = TRUE; 
+    if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(TRUE);
     SetProgress(0);
     UpdateStatus(_T("시뮬레이션 중..."));
 
@@ -170,11 +171,18 @@ void CMainFrame::StartSimulation()
     }).detach();
 }
 
-void CMainFrame::StopSimulation() { if (m_pSimcRunner) m_pSimcRunner->Cancel(); ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; }
+void CMainFrame::StopSimulation() 
+{ 
+    if (m_pSimcRunner) m_pSimcRunner->Cancel(); 
+    ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; 
+    if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(FALSE);
+}
 
 void CMainFrame::OnSimulationComplete(const CString& res)
 {
-    ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; SetProgress(100);
+    ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; 
+    if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(FALSE);
+    SetProgress(100);
     CResultHistoryManager* h = GetResultHistoryManager();
     if (h) {
         CSimResult r;
