@@ -84,30 +84,29 @@ void CSimOptionsDlg::LoadSettings()
     // 만약 설정된 경로가 비어있거나 파일이 존재하지 않으면 자동 감지 시도
     if (m_strSimcPath.IsEmpty() || !PathFileExists(m_strSimcPath))
     {
-        CString defaultBase = CSimcDownloader::GetDefaultInstallPath();
-        if (PathIsDirectory(defaultBase))
+        CString installedVersion, latestVersion;
+        // CheckVersionStatus는 최신 버전이 설치되어 있으면 1, 구버전이면 0을 반환함
+        int status = CSimcDownloader::CheckVersionStatus(installedVersion, latestVersion);
+        
+        if (status >= 0 && !installedVersion.IsEmpty())
         {
-            // 최신 버전을 찾기 위해 디렉토리 스캔
-            std::vector<std::wstring> versions;
+            // 최신 또는 구버전이라도 설치된 것이 있으면 해당 경로 사용
+            // recursive_directory_iterator를 통해 실제 simc.exe 위치 재확인
+            CString baseDir = CSimcDownloader::GetDefaultInstallPath() + _T("\\") + installedVersion;
+            std::wstring foundPath = L"";
             try {
-                for (auto& p : fs::directory_iterator(std::wstring(defaultBase)))
-                {
-                    if (p.is_directory())
-                    {
-                        std::wstring name = p.path().filename().wstring();
-                        if (fs::exists(p.path() / L"simc.exe"))
-                        {
-                            versions.push_back(name);
-                        }
+                for (auto const& entry : fs::recursive_directory_iterator(std::wstring(baseDir))) {
+                    if (entry.path().filename() == L"simc.exe") {
+                        foundPath = entry.path().wstring();
+                        break;
                     }
                 }
-            } catch (...) {}
+            } catch(...) {}
 
-            if (!versions.empty())
-            {
-                // 문자열 기준 내림차순 정렬 (최신 버전이 위로)
-                std::sort(versions.rbegin(), versions.rend());
-                m_strSimcPath = (defaultBase + _T("\\") + versions[0].c_str() + _T("\\simc.exe"));
+            if (!foundPath.empty()) {
+                m_strSimcPath = foundPath.c_str();
+                pApp->m_strSimcPath = m_strSimcPath;
+                UpdateData(FALSE); // UI 업데이트 강제
             }
         }
     }

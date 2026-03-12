@@ -52,29 +52,13 @@ BOOL CWoWSimbotQuickApp::InitInstance()
     // 앱 시작 시 경로가 없거나 유효하지 않으면 최신 버전 자동 감지
     if (m_strSimcPath.IsEmpty() || !PathFileExists(m_strSimcPath))
     {
-        CString defaultBase = CSimcDownloader::GetDefaultInstallPath();
-        if (PathIsDirectory(defaultBase))
+        CString installedVersion, latestVersion;
+        int status = CSimcDownloader::CheckVersionStatus(installedVersion, latestVersion);
+        
+        if (status >= 0 && !installedVersion.IsEmpty())
         {
-            std::vector<std::wstring> versions;
-            try {
-                for (auto& p : fs::directory_iterator(std::wstring(defaultBase)))
-                {
-                    if (p.is_directory())
-                    {
-                        std::wstring name = p.path().filename().wstring();
-                        if (fs::exists(p.path() / L"simc.exe"))
-                        {
-                            versions.push_back(name);
-                        }
-                    }
-                }
-            } catch (...) {}
-
-            if (!versions.empty())
-            {
-                std::sort(versions.rbegin(), versions.rend());
-                m_strSimcPath = (defaultBase + _T("\\") + versions[0].c_str() + _T("\\simc.exe"));
-            }
+            m_strSimcPath = CSimcDownloader::GetDefaultInstallPath() + _T("\\") + installedVersion + _T("\\simc.exe");
+            if (!PathFileExists(m_strSimcPath)) m_strSimcPath = _T("");
         }
     }
 

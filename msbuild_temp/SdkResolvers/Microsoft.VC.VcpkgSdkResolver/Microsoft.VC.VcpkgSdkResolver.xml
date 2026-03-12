@@ -1,0 +1,4 @@
+<SdkResolver>
+  <Path>.\Microsoft.VC.VcpkgSdkResolver.dll</Path>
+  <ResolvableSdkPattern>^(?i)vcpkg:.*</ResolvableSdkPattern>
+</SdkResolver>
