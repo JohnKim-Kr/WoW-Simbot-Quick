@@ -57,8 +57,23 @@ BOOL CWoWSimbotQuickApp::InitInstance()
         
         if (status >= 0 && !installedVersion.IsEmpty())
         {
-            m_strSimcPath = CSimcDownloader::GetDefaultInstallPath() + _T("\\") + installedVersion + _T("\\simc.exe");
-            if (!PathFileExists(m_strSimcPath)) m_strSimcPath = _T("");
+            CString baseDir = CSimcDownloader::GetDefaultInstallPath() + _T("\\") + installedVersion;
+            std::wstring foundPath;
+
+            try
+            {
+                for (auto const& entry : std::filesystem::recursive_directory_iterator(std::wstring(baseDir)))
+                {
+                    if (entry.path().filename() == L"simc.exe")
+                    {
+                        foundPath = entry.path().wstring();
+                        break;
+                    }
+                }
+            }
+            catch (...) {}
+
+            m_strSimcPath = foundPath.empty() ? _T("") : foundPath.c_str();
         }
     }
 

@@ -19,6 +19,8 @@ public:
     // 다운로드 중지
     void Cancel();
 
+    CString GetLastErrorMessage() const { return m_lastErrorMessage; }
+
     // 설치된 simc 경로 가져오기
     static CString GetDefaultInstallPath();
 
@@ -33,6 +35,10 @@ public:
 private:
     BOOL m_bCancelled;
     CString m_tempZipPath;
+    CString m_lastErrorMessage;
+
+    void SetLastErrorMessage(const CString& message);
+    void SetLastErrorMessage(const CString& message, DWORD errorCode);
 
     // GitHub API에서 최신 릴리즈 정보 가져오기
     BOOL FetchLatestReleaseInfo(CString& outVersion, CString& outDownloadUrl);

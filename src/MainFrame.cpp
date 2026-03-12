@@ -243,3 +243,15 @@ BOOL CMainFrame::GetUseRune() const { return m_pSimSettingsPanel ? m_pSimSetting
 BOOL CMainFrame::GetUseAugment() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseAugment() : TRUE; }
 BOOL CMainFrame::GetUseBloodlust() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUseBloodlust() : TRUE; }
 BOOL CMainFrame::GetUsePotion() const { return m_pSimSettingsPanel ? m_pSimSettingsPanel->GetUsePotion() : TRUE; }
+
+#ifdef _DEBUG
+void CMainFrame::AssertValid() const
+{
+    CFrameWnd::AssertValid();
+}
+
+void CMainFrame::Dump(CDumpContext& dc) const
+{
+    CFrameWnd::Dump(dc);
+}
+#endif

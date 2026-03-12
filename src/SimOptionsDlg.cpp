@@ -165,15 +165,22 @@ void CSimOptionsDlg::OnBnClickedButtonDownloadSimc()
 
     if (!m_pDownloader->CheckLatestVersion(version, url))
     {
-        m_staticStatus.SetWindowText(_T("Failed to check version"));
+        CString errorDetail = m_pDownloader->GetLastErrorMessage();
+        CString statusText = errorDetail.IsEmpty() ? CString(_T("Failed to check version")) : errorDetail;
+        m_staticStatus.SetWindowText(statusText);
         m_btnDownload.EnableWindow(TRUE);
         m_progressDownload.SetPos(0);
 
         // 수동 다운로드 안내
         CString msg;
-        msg = _T("Failed to download simc automatically.\n\n")
+        msg = _T("Failed to download simc automatically.\n\n");
+        if (!errorDetail.IsEmpty())
+        {
+            msg += _T("Reason: ") + errorDetail + _T("\n\n");
+        }
+        msg +=
               _T("Please download and install manually:\n\n")
-              _T("1. Visit: http://downloads.simulationcraft.org/nightly/\n")
+              _T("1. Visit: https://downloads.simulationcraft.org/nightly/\n")
               _T("2. Download the latest 'simc-*-win64.7z' file\n")
               _T("3. Install 7-Zip from https://www.7-zip.org/ (if not installed)\n")
               _T("4. Extract the .7z file to:\n   ") + CSimcDownloader::GetDefaultInstallPath() + _T("\n\n")
@@ -182,7 +189,7 @@ void CSimOptionsDlg::OnBnClickedButtonDownloadSimc()
 
         if (AfxMessageBox(msg, MB_YESNO | MB_ICONQUESTION) == IDYES)
         {
-            ShellExecute(NULL, _T("open"), _T("http://downloads.simulationcraft.org/nightly/"),
+            ShellExecute(NULL, _T("open"), _T("https://downloads.simulationcraft.org/nightly/"),
                 NULL, NULL, SW_SHOWNORMAL);
         }
         return;
@@ -190,9 +197,22 @@ void CSimOptionsDlg::OnBnClickedButtonDownloadSimc()
 
     CString installDir = CSimcDownloader::GetDefaultInstallPath();
     CString versionDir = installDir + _T("\\") + version;
-    CString simcPath = versionDir + _T("\\simc.exe");
+    CString simcPath;
 
-    if (PathFileExists(simcPath))
+    try
+    {
+        for (auto const& entry : fs::recursive_directory_iterator(std::wstring(versionDir)))
+        {
+            if (entry.path().filename() == L"simc.exe")
+            {
+                simcPath = entry.path().wstring().c_str();
+                break;
+            }
+        }
+    }
+    catch (...) {}
+
+    if (!simcPath.IsEmpty())
     {
         CString msg;
         msg.Format(_T("Version %s is already installed.\nDo you want to reinstall?"), version);
@@ -232,6 +252,7 @@ void CSimOptionsDlg::OnDownloadComplete(BOOL success, CString* pSimcPath)
 {
     m_bDownloading = false;
     m_btnDownload.EnableWindow(TRUE);
+    CString errorDetail = m_pDownloader ? m_pDownloader->GetLastErrorMessage() : CString();
 
     if (success && pSimcPath && !pSimcPath->IsEmpty())
     {
@@ -247,20 +268,26 @@ void CSimOptionsDlg::OnDownloadComplete(BOOL success, CString* pSimcPath)
     {
         if (pSimcPath) delete pSimcPath;
 
-        m_staticStatus.SetWindowText(_T("Download failed"));
+        CString statusText = errorDetail.IsEmpty() ? CString(_T("Download failed")) : errorDetail;
+        m_staticStatus.SetWindowText(statusText);
 
         // 수동 다운로드 안내
         CString msg;
-        msg = _T("Automatic download failed.\n\n")
+        msg = _T("Automatic download failed.\n\n");
+        if (!errorDetail.IsEmpty())
+        {
+            msg += _T("Reason: ") + errorDetail + _T("\n\n");
+        }
+        msg +=
               _T("Please download simc manually:\n")
-              _T("1. Visit: https://github.com/simulationcraft/simc/releases\n")
+              _T("1. Visit: https://downloads.simulationcraft.org/nightly/\n")
               _T("2. Download the latest 'simc-*-win64.7z' file\n")
               _T("3. Extract to: ") + CSimcDownloader::GetDefaultInstallPath() + _T("\n\n")
               _T("Would you like to open the download page in your browser?");
 
         if (AfxMessageBox(msg, MB_YESNO | MB_ICONQUESTION) == IDYES)
         {
-            ShellExecute(NULL, _T("open"), _T("https://github.com/simulationcraft/simc/releases"),
+            ShellExecute(NULL, _T("open"), _T("https://downloads.simulationcraft.org/nightly/"),
                 NULL, NULL, SW_SHOWNORMAL);
         }
     }

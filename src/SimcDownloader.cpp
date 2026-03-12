@@ -2,16 +2,462 @@
 #include "framework.h"
 #include "SimcDownloader.h"
 #include "json.hpp"
-#include <winhttp.h>
 #include <fstream>
 #include <filesystem>
 #include <shlobj.h>
+#include <winhttp.h>
 #include <algorithm>
-
-#pragma comment(lib, "winhttp.lib")
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
+
+namespace
+{
+    CString EscapeCommandLineArgument(const CString& value)
+    {
+        CString escaped(value);
+        escaped.Replace(_T("\""), _T("\\\""));
+        return escaped;
+    }
+
+    CString EscapePowerShellSingleQuoted(const CString& value)
+    {
+        CString escaped(value);
+        escaped.Replace(_T("'"), _T("''"));
+        return escaped;
+    }
+
+    bool RunProcess(const CString& applicationName, const CString& arguments, DWORD* outExitCode = nullptr, DWORD* outLaunchError = nullptr)
+    {
+        CString commandLine;
+        commandLine.Format(_T("\"%s\" %s"), static_cast<LPCTSTR>(applicationName), static_cast<LPCTSTR>(arguments));
+
+        STARTUPINFO si = { sizeof(si) };
+        PROCESS_INFORMATION pi = {};
+        if (outExitCode)
+        {
+            *outExitCode = static_cast<DWORD>(-1);
+        }
+        if (outLaunchError)
+        {
+            *outLaunchError = ERROR_SUCCESS;
+        }
+
+        LPTSTR rawCommandLine = commandLine.GetBuffer();
+        const BOOL created = CreateProcess(NULL, rawCommandLine, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi);
+        const DWORD createError = created ? ERROR_SUCCESS : GetLastError();
+        commandLine.ReleaseBuffer();
+
+        if (!created)
+        {
+            if (outLaunchError)
+            {
+                *outLaunchError = createError;
+            }
+            return false;
+        }
+
+        WaitForSingleObject(pi.hProcess, 600000);
+
+        DWORD exitCode = 1;
+        GetExitCodeProcess(pi.hProcess, &exitCode);
+        CloseHandle(pi.hProcess);
+        CloseHandle(pi.hThread);
+
+        if (outExitCode)
+        {
+            *outExitCode = exitCode;
+        }
+        if (outLaunchError)
+        {
+            *outLaunchError = ERROR_SUCCESS;
+        }
+
+        return exitCode == 0;
+    }
+
+    bool DownloadWithPowerShell(const CString& url, const CString& destPath, DWORD* outExitCode = nullptr, DWORD* outLaunchError = nullptr)
+    {
+        CString arguments;
+        arguments.Format(
+            _T("-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"$ProgressPreference='SilentlyContinue'; try { [Net.ServicePointManager]::SecurityProtocol = [Net.SecurityProtocolType]::Tls12; Invoke-WebRequest -UseBasicParsing -Headers @{ 'User-Agent'='WoWSimbotQuick/1.0' } -Uri '%s' -OutFile '%s'; exit 0 } catch { exit 1 }\""),
+            static_cast<LPCTSTR>(EscapePowerShellSingleQuoted(url)),
+            static_cast<LPCTSTR>(EscapePowerShellSingleQuoted(destPath)));
+        return RunProcess(_T("powershell.exe"), arguments, outExitCode, outLaunchError);
+    }
+
+    bool DownloadWithCurl(const CString& url, const CString& destPath, DWORD* outExitCode = nullptr, DWORD* outLaunchError = nullptr)
+    {
+        CString arguments;
+        arguments.Format(
+            _T("-L --fail --silent --show-error --globoff -A \"WoWSimbotQuick/1.0\" --output \"%s\" --url \"%s\""),
+            static_cast<LPCTSTR>(EscapeCommandLineArgument(destPath)),
+            static_cast<LPCTSTR>(EscapeCommandLineArgument(url)));
+
+        DWORD launchError = ERROR_SUCCESS;
+        if (RunProcess(_T("curl.exe"), arguments, outExitCode, &launchError))
+        {
+            if (outLaunchError)
+            {
+                *outLaunchError = ERROR_SUCCESS;
+            }
+            return true;
+        }
+
+        // Retry once with PowerShell if curl is missing or returns an HTTP/process failure.
+        if (launchError == ERROR_FILE_NOT_FOUND ||
+            launchError == ERROR_PATH_NOT_FOUND ||
+            launchError == ERROR_SUCCESS)
+        {
+            return DownloadWithPowerShell(url, destPath, outExitCode, outLaunchError);
+        }
+
+        if (outLaunchError)
+        {
+            *outLaunchError = launchError;
+        }
+        return false;
+    }
+
+    bool HttpGetWithWinHttp(const CString& url, std::string& outResponse, DWORD* outStatusCode = nullptr, DWORD* outWinHttpError = nullptr)
+    {
+        if (outStatusCode)
+        {
+            *outStatusCode = 0;
+        }
+        if (outWinHttpError)
+        {
+            *outWinHttpError = ERROR_SUCCESS;
+        }
+
+        HINTERNET hSession = WinHttpOpen(L"WoWSimbotQuick/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hSession)
+        {
+            if (outWinHttpError)
+            {
+                *outWinHttpError = GetLastError();
+            }
+            return false;
+        }
+
+        DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+        WinHttpSetOption(hSession, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+        DWORD secureProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+        WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &secureProtocols, sizeof(secureProtocols));
+
+        URL_COMPONENTS components = {};
+        components.dwStructSize = sizeof(components);
+        components.dwHostNameLength = static_cast<DWORD>(-1);
+        components.dwUrlPathLength = static_cast<DWORD>(-1);
+        components.dwExtraInfoLength = static_cast<DWORD>(-1);
+
+        const std::wstring urlW(url);
+        if (!WinHttpCrackUrl(urlW.c_str(), static_cast<DWORD>(urlW.size()), 0, &components))
+        {
+            if (outWinHttpError)
+            {
+                *outWinHttpError = GetLastError();
+            }
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        const std::wstring host(components.lpszHostName, components.dwHostNameLength);
+        std::wstring path = (components.dwUrlPathLength > 0 && components.lpszUrlPath != nullptr)
+            ? std::wstring(components.lpszUrlPath, components.dwUrlPathLength)
+            : std::wstring(L"/");
+
+        if (components.dwExtraInfoLength > 0 && components.lpszExtraInfo != nullptr)
+        {
+            path.append(components.lpszExtraInfo, components.dwExtraInfoLength);
+        }
+
+        HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), components.nPort, 0);
+        if (!hConnect)
+        {
+            if (outWinHttpError)
+            {
+                *outWinHttpError = GetLastError();
+            }
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        const DWORD requestFlags = (components.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, requestFlags);
+        if (!hRequest)
+        {
+            if (outWinHttpError)
+            {
+                *outWinHttpError = GetLastError();
+            }
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        bool ok = false;
+        DWORD statusCode = 0;
+
+        if (WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+            WinHttpReceiveResponse(hRequest, nullptr))
+        {
+            DWORD statusSize = sizeof(statusCode);
+            WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
+
+            if (statusCode >= 200 && statusCode < 300)
+            {
+                outResponse.clear();
+                while (true)
+                {
+                    DWORD available = 0;
+                    if (!WinHttpQueryDataAvailable(hRequest, &available))
+                    {
+                        break;
+                    }
+                    if (available == 0)
+                    {
+                        ok = !outResponse.empty();
+                        break;
+                    }
+
+                    std::vector<char> buffer(available);
+                    DWORD bytesRead = 0;
+                    if (!WinHttpReadData(hRequest, buffer.data(), available, &bytesRead))
+                    {
+                        break;
+                    }
+                    outResponse.append(buffer.data(), bytesRead);
+                }
+            }
+        }
+
+        if (!ok && outWinHttpError && *outWinHttpError == ERROR_SUCCESS)
+        {
+            *outWinHttpError = GetLastError();
+        }
+        if (outStatusCode)
+        {
+            *outStatusCode = statusCode;
+        }
+
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return ok;
+    }
+
+    bool DownloadWithWinHttpToFile(const CString& url, const CString& destPath, DWORD* outStatusCode = nullptr, DWORD* outWinHttpError = nullptr)
+    {
+        if (outStatusCode)
+        {
+            *outStatusCode = 0;
+        }
+        if (outWinHttpError)
+        {
+            *outWinHttpError = ERROR_SUCCESS;
+        }
+
+        HINTERNET hSession = WinHttpOpen(L"WoWSimbotQuick/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
+        if (!hSession)
+        {
+            if (outWinHttpError) *outWinHttpError = GetLastError();
+            return false;
+        }
+
+        DWORD redirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
+        WinHttpSetOption(hSession, WINHTTP_OPTION_REDIRECT_POLICY, &redirectPolicy, sizeof(redirectPolicy));
+        DWORD secureProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2;
+        WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &secureProtocols, sizeof(secureProtocols));
+
+        URL_COMPONENTS components = {};
+        components.dwStructSize = sizeof(components);
+        components.dwHostNameLength = static_cast<DWORD>(-1);
+        components.dwUrlPathLength = static_cast<DWORD>(-1);
+        components.dwExtraInfoLength = static_cast<DWORD>(-1);
+
+        const std::wstring urlW(url);
+        if (!WinHttpCrackUrl(urlW.c_str(), static_cast<DWORD>(urlW.size()), 0, &components))
+        {
+            if (outWinHttpError) *outWinHttpError = GetLastError();
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        const std::wstring host(components.lpszHostName, components.dwHostNameLength);
+        std::wstring path = (components.dwUrlPathLength > 0 && components.lpszUrlPath != nullptr)
+            ? std::wstring(components.lpszUrlPath, components.dwUrlPathLength)
+            : std::wstring(L"/");
+        if (components.dwExtraInfoLength > 0 && components.lpszExtraInfo != nullptr)
+        {
+            path.append(components.lpszExtraInfo, components.dwExtraInfoLength);
+        }
+
+        HINTERNET hConnect = WinHttpConnect(hSession, host.c_str(), components.nPort, 0);
+        if (!hConnect)
+        {
+            if (outWinHttpError) *outWinHttpError = GetLastError();
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        const DWORD requestFlags = (components.nScheme == INTERNET_SCHEME_HTTPS) ? WINHTTP_FLAG_SECURE : 0;
+        HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", path.c_str(), nullptr, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, requestFlags);
+        if (!hRequest)
+        {
+            if (outWinHttpError) *outWinHttpError = GetLastError();
+            WinHttpCloseHandle(hConnect);
+            WinHttpCloseHandle(hSession);
+            return false;
+        }
+
+        bool ok = false;
+        DWORD statusCode = 0;
+
+        std::ofstream output(std::wstring(destPath), std::ios::binary | std::ios::trunc);
+        if (output &&
+            WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0) &&
+            WinHttpReceiveResponse(hRequest, nullptr))
+        {
+            DWORD statusSize = sizeof(statusCode);
+            WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_STATUS_CODE | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &statusCode, &statusSize, WINHTTP_NO_HEADER_INDEX);
+
+            if (statusCode >= 200 && statusCode < 300)
+            {
+                while (true)
+                {
+                    DWORD available = 0;
+                    if (!WinHttpQueryDataAvailable(hRequest, &available))
+                    {
+                        break;
+                    }
+                    if (available == 0)
+                    {
+                        ok = true;
+                        break;
+                    }
+
+                    std::vector<char> buffer(available);
+                    DWORD bytesRead = 0;
+                    if (!WinHttpReadData(hRequest, buffer.data(), available, &bytesRead))
+                    {
+                        break;
+                    }
+                    output.write(buffer.data(), static_cast<std::streamsize>(bytesRead));
+                    if (!output.good())
+                    {
+                        break;
+                    }
+                }
+            }
+        }
+
+        if (!ok)
+        {
+            output.close();
+            DeleteFile(destPath);
+            if (outWinHttpError && *outWinHttpError == ERROR_SUCCESS)
+            {
+                *outWinHttpError = GetLastError();
+            }
+        }
+
+        if (outStatusCode)
+        {
+            *outStatusCode = statusCode;
+        }
+
+        WinHttpCloseHandle(hRequest);
+        WinHttpCloseHandle(hConnect);
+        WinHttpCloseHandle(hSession);
+        return ok;
+    }
+
+    bool ReadFileToString(const CString& path, std::string& outContent)
+    {
+        std::ifstream input(std::wstring(path), std::ios::binary);
+        if (!input)
+        {
+            return false;
+        }
+
+        outContent.assign(std::istreambuf_iterator<char>(input), std::istreambuf_iterator<char>());
+        return !outContent.empty();
+    }
+
+    CString FindSimcExecutableUnder(const CString& baseDir)
+    {
+        try
+        {
+            for (auto const& entry : fs::recursive_directory_iterator(std::wstring(baseDir)))
+            {
+                if (entry.path().filename() == L"simc.exe")
+                {
+                    return entry.path().wstring().c_str();
+                }
+            }
+        }
+        catch (...) {}
+
+        return _T("");
+    }
+
+    bool ParseNightlyAsset(const std::string& response, CString& outVersion, CString& outDownloadUrl)
+    {
+        const std::string hrefPrefix = "href=\"simc-";
+        const std::string win64Marker = "-win64.";
+
+        std::string bestFileName;
+        size_t searchPos = 0;
+        while (true)
+        {
+            const size_t hrefPos = response.find(hrefPrefix, searchPos);
+            if (hrefPos == std::string::npos)
+            {
+                break;
+            }
+
+            const size_t filePos = hrefPos + 6; // points to "simc-"
+            const size_t quoteEnd = response.find('"', filePos);
+            if (quoteEnd == std::string::npos)
+            {
+                break;
+            }
+
+            const std::string fileName = response.substr(filePos, quoteEnd - filePos);
+            const size_t markerPos = fileName.find(win64Marker);
+            const bool isArchive = (fileName.size() > 3 &&
+                (fileName.rfind(".7z") == fileName.size() - 3 ||
+                 fileName.rfind(".zip") == fileName.size() - 4));
+
+            if (markerPos != std::string::npos && isArchive)
+            {
+                if (bestFileName.empty() || fileName > bestFileName)
+                {
+                    bestFileName = fileName;
+                }
+            }
+
+            searchPos = quoteEnd + 1;
+        }
+
+        if (bestFileName.empty())
+        {
+            return false;
+        }
+
+        const size_t markerPos = bestFileName.find(win64Marker);
+        if (markerPos == std::string::npos || markerPos <= 5)
+        {
+            return false;
+        }
+
+        const std::string version = bestFileName.substr(5, markerPos - 5);
+        outVersion = version.c_str();
+        outDownloadUrl = (std::string("https://downloads.simulationcraft.org/nightly/") + bestFileName).c_str();
+        return true;
+    }
+}
 
 CSimcDownloader::CSimcDownloader()
     : m_bCancelled(FALSE)
@@ -22,14 +468,26 @@ CSimcDownloader::~CSimcDownloader()
 {
 }
 
+void CSimcDownloader::SetLastErrorMessage(const CString& message)
+{
+    m_lastErrorMessage = message;
+}
+
+void CSimcDownloader::SetLastErrorMessage(const CString& message, DWORD errorCode)
+{
+    m_lastErrorMessage.Format(_T("%s (error=%lu)"), (LPCTSTR)message, errorCode);
+}
+
 BOOL CSimcDownloader::CheckLatestVersion(CString& outVersion, CString& outDownloadUrl)
 {
+    m_lastErrorMessage.Empty();
     return FetchLatestReleaseInfo(outVersion, outDownloadUrl);
 }
 
 BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& outSimcPath, ProgressCallback callback)
 {
     m_bCancelled = FALSE;
+    m_lastErrorMessage.Empty();
     CString version = _T("");
     CString downloadUrl = _T("");
     CString baseDir = GetDefaultInstallPath();
@@ -39,10 +497,14 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
     std::wstring foundSimcW = L"";
     TCHAR tempPath[MAX_PATH];
 
-    if (callback) callback(5, _T("버전 정보 확인 중..."));
+    if (callback) callback(5, _T("Checking latest version..."));
     if (!FetchLatestReleaseInfo(version, downloadUrl))
     {
-        if (callback) callback(0, _T("서버 연결 실패 (GitHub API)"));
+        if (m_lastErrorMessage.IsEmpty())
+        {
+            SetLastErrorMessage(_T("Failed to resolve version metadata."));
+        }
+        if (callback) callback(0, _T("Failed to resolve version metadata."));
         return FALSE;
     }
 
@@ -50,16 +512,12 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
     
     if (PathIsDirectory(targetDir))
     {
-        // 폴더가 있으면 내부를 뒤져서 simc.exe가 있는지 확인
-        try {
-            for (auto const& entry : fs::recursive_directory_iterator(std::wstring(targetDir))) {
-                if (entry.path().filename() == L"simc.exe") {
-                    if (callback) callback(100, _T("최신 버전이 이미 설치되어 있습니다."));
-                    outSimcPath = entry.path().wstring().c_str();
-                    return TRUE;
-                }
-            }
-        } catch(...) {}
+        outSimcPath = FindSimcExecutableUnder(targetDir);
+        if (!outSimcPath.IsEmpty())
+        {
+            if (callback) callback(100, _T("Latest version is already installed."));
+            return TRUE;
+        }
     }
 
     if (!CreateDirectoryRecursive(baseDir)) return FALSE;
@@ -68,17 +526,22 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
     CString ext = (downloadUrl.Find(_T(".7z")) != -1) ? _T(".7z") : _T(".zip");
     zipPath.Format(_T("%s\\simc_%s%s"), tempPath, version, ext);
 
-    if (callback) callback(10, _T("시뮬레이터 다운로드 중..."));
+    if (callback) callback(10, _T("Downloading simulator..."));
     if (!DownloadFile(downloadUrl, zipPath, [callback](int p, const CString& s) {
         if (callback) callback(10 + (p * 70 / 100), s);
     }))
     {
+        if (callback)
+        {
+            CString downloadError = m_lastErrorMessage.IsEmpty() ? CString(_T("Download failed.")) : m_lastErrorMessage;
+            callback(0, downloadError);
+        }
         return FALSE;
     }
 
     if (m_bCancelled) return FALSE;
 
-    if (callback) callback(85, _T("압축 해제 중 (tar)..."));
+    if (callback) callback(85, _T("Extracting archive (tar)..."));
     
     extractTempDir = baseDir + _T("\\temp_extract");
     if (fs::exists(std::wstring(extractTempDir))) {
@@ -88,11 +551,12 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
 
     if (!ExtractZip(zipPath, extractTempDir))
     {
-        if (callback) callback(0, _T("압축 해제 실패 (tar.exe 오류)"));
+        CString extractError = m_lastErrorMessage.IsEmpty() ? CString(_T("Archive extraction failed (tar.exe).")) : m_lastErrorMessage;
+        if (callback) callback(0, extractError);
         return FALSE;
     }
 
-    // 압축 해제된 내용 중 실제 simc.exe가 있는 상위 폴더 찾기
+    // Find the parent folder that actually contains simc.exe after extraction.
     std::wstring sourcePathW = L"";
     try {
         for (auto const& entry : fs::recursive_directory_iterator(std::wstring(extractTempDir)))
@@ -114,11 +578,12 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
     try {
         fs::rename(sourcePathW, std::wstring(targetDir));
     } catch (...) {
-        if (callback) callback(0, _T("설치 폴더 구성 실패 (파일 잠김 등)"));
+        SetLastErrorMessage(_T("Failed to finalize install directory."));
+        if (callback) callback(0, _T("Failed to finalize install directory."));
         return FALSE;
     }
 
-    // 최종 위치에서 simc.exe 확인
+    // Verify simc.exe exists in final target location.
     try {
         for (auto const& entry : fs::recursive_directory_iterator(std::wstring(targetDir)))
         {
@@ -132,7 +597,8 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
 
     if (foundSimcW.empty())
     {
-        if (callback) callback(0, _T("simc.exe를 찾을 수 없습니다."));
+        SetLastErrorMessage(_T("simc.exe was not found after extraction."));
+        if (callback) callback(0, _T("simc.exe was not found after extraction."));
         return FALSE;
     }
 
@@ -142,7 +608,7 @@ BOOL CSimcDownloader::DownloadAndInstall(const CString& installDir, CString& out
         try { fs::remove_all(std::wstring(extractTempDir)); } catch(...) {}
     }
 
-    if (callback) callback(100, _T("설치 완료!"));
+    if (callback) callback(100, _T("Install complete!"));
     return TRUE;
 }
 
@@ -214,121 +680,235 @@ int CSimcDownloader::CheckVersionStatus(CString& outInstalledVersion, CString& o
 
 BOOL CSimcDownloader::FetchLatestReleaseInfo(CString& outVersion, CString& outDownloadUrl)
 {
-    std::string response;
-    if (!HttpGet(_T("https://api.github.com/repos/simulationcraft/simc/releases/latest"), response))
-        return FALSE;
-
-    try
+    auto pickWin64AssetFromRelease = [&outVersion, &outDownloadUrl](const json& release) -> bool
     {
-        auto j = json::parse(response);
-        std::string tag = j["tag_name"];
-        outVersion = tag.c_str();
-
-        // win64 버전 찾기
-        for (auto& asset : j["assets"])
+        if (!release.is_object() || !release.contains("assets") || !release["assets"].is_array())
         {
-            std::string name = asset["name"];
-            std::string url = asset["browser_download_url"];
-            
-            if (name.find("win64") != std::string::npos && 
+            return false;
+        }
+
+        std::string tag;
+        if (release.contains("tag_name") && release["tag_name"].is_string())
+        {
+            tag = release["tag_name"].get<std::string>();
+        }
+
+        for (const auto& asset : release["assets"])
+        {
+            if (!asset.is_object())
+            {
+                continue;
+            }
+
+            if (!asset.contains("name") || !asset["name"].is_string() ||
+                !asset.contains("browser_download_url") || !asset["browser_download_url"].is_string())
+            {
+                continue;
+            }
+
+            const std::string name = asset["name"].get<std::string>();
+            const std::string url = asset["browser_download_url"].get<std::string>();
+            if (name.find("win64") != std::string::npos &&
                 (name.find(".7z") != std::string::npos || name.find(".zip") != std::string::npos))
             {
+                outVersion = tag.c_str();
                 outDownloadUrl = url.c_str();
+                return true;
+            }
+        }
+
+        return false;
+    };
+
+    std::string response;
+    if (HttpGet(_T("https://downloads.simulationcraft.org/nightly/"), response) &&
+        ParseNightlyAsset(response, outVersion, outDownloadUrl))
+    {
+        return TRUE;
+    }
+
+    response.clear();
+    if (HttpGet(_T("http://downloads.simulationcraft.org/nightly/"), response) &&
+        ParseNightlyAsset(response, outVersion, outDownloadUrl))
+    {
+        return TRUE;
+    }
+
+    response.clear();
+    if (HttpGet(_T("https://api.github.com/repos/simulationcraft/simc/releases/latest"), response))
+    {
+        try
+        {
+            auto j = json::parse(response);
+            if (pickWin64AssetFromRelease(j))
+            {
                 return TRUE;
             }
         }
+        catch (...) {}
     }
-    catch (...) {}
+
+    // Some repositories return 404 for /releases/latest. Fall back to releases list.
+    response.clear();
+    if (HttpGet(_T("https://api.github.com/repos/simulationcraft/simc/releases?per_page=20"), response))
+    {
+        try
+        {
+            auto releases = json::parse(response);
+            if (releases.is_array())
+            {
+                for (const auto& release : releases)
+                {
+                    if (pickWin64AssetFromRelease(release))
+                    {
+                        return TRUE;
+                    }
+                }
+            }
+        }
+        catch (...) {}
+    }
+
+    if (m_lastErrorMessage.IsEmpty())
+    {
+        SetLastErrorMessage(_T("No usable version metadata found from nightly or GitHub."));
+    }
 
     return FALSE;
 }
 
 BOOL CSimcDownloader::DownloadFile(const CString& url, const CString& destPath, ProgressCallback callback)
 {
-    HINTERNET hSession = WinHttpOpen(L"WoWSimbotQuick/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return FALSE;
-
-    // 리다이렉션 자동 추적 설정 (GitHub 필수)
-    DWORD dwRedirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-    WinHttpSetOption(hSession, WINHTTP_OPTION_REDIRECT_POLICY, &dwRedirectPolicy, sizeof(dwRedirectPolicy));
-
-    URL_COMPONENTS urlComp = { sizeof(URL_COMPONENTS) };
-    urlComp.dwHostNameLength = (DWORD)-1;
-    urlComp.dwUrlPathLength = (DWORD)-1;
-    urlComp.dwExtraInfoLength = (DWORD)-1;
-
-    if (!WinHttpCrackUrl(std::wstring(url).c_str(), (DWORD)url.GetLength(), 0, &urlComp))
+    auto tryDownload = [this, callback, &destPath](const CString& attemptUrl, DWORD& outCurlExitCode, DWORD& outCurlLaunchError, DWORD& outStatusCode, DWORD& outWinHttpError) -> BOOL
     {
-        WinHttpCloseHandle(hSession);
-        return FALSE;
-    }
+        outCurlExitCode = 1;
+        outCurlLaunchError = ERROR_SUCCESS;
+        outStatusCode = 0;
+        outWinHttpError = ERROR_SUCCESS;
 
-    std::wstring hostName(urlComp.lpszHostName, urlComp.dwHostNameLength);
-    HINTERNET hConnect = WinHttpConnect(hSession, hostName.c_str(), urlComp.nPort, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return FALSE; }
-
-    DWORD dwFlags = (urlComp.nPort == INTERNET_DEFAULT_HTTPS_PORT) ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", urlComp.lpszUrlPath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE; }
-
-    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
-    {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE;
-    }
-
-    if (!WinHttpReceiveResponse(hRequest, NULL))
-    {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE;
-    }
-
-    DWORD dwContentLength = 0;
-    DWORD dwSize = sizeof(dwContentLength);
-    WinHttpQueryHeaders(hRequest, WINHTTP_QUERY_CONTENT_LENGTH | WINHTTP_QUERY_FLAG_NUMBER, WINHTTP_HEADER_NAME_BY_INDEX, &dwContentLength, &dwSize, WINHTTP_NO_HEADER_INDEX);
-
-    std::ofstream outFile(std::wstring(destPath), std::ios::binary);
-    if (!outFile) { WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE; }
-
-    BYTE buffer[16384];
-    DWORD dwRead = 0;
-    DWORD dwTotalRead = 0;
-
-    while (WinHttpReadData(hRequest, buffer, sizeof(buffer), &dwRead) && dwRead > 0)
-    {
-        if (m_bCancelled) { outFile.close(); DeleteFile(destPath); break; }
-        outFile.write((char*)buffer, dwRead);
-        dwTotalRead += dwRead;
-        if (callback && dwContentLength > 0)
+        if (DownloadWithCurl(attemptUrl, destPath, &outCurlExitCode, &outCurlLaunchError))
         {
-            callback((int)(dwTotalRead * 100 / dwContentLength), _T("다운로드 중..."));
+            if (callback) callback(100, _T("Download complete."));
+            return TRUE;
         }
+
+        if (DownloadWithWinHttpToFile(attemptUrl, destPath, &outStatusCode, &outWinHttpError))
+        {
+            if (callback) callback(100, _T("Download complete."));
+            return TRUE;
+        }
+
+        DeleteFile(destPath);
+        return FALSE;
+    };
+
+    DWORD curlExitCode = 1;
+    DWORD curlLaunchError = ERROR_SUCCESS;
+    DWORD statusCode = 0;
+    DWORD winHttpError = ERROR_SUCCESS;
+    if (tryDownload(url, curlExitCode, curlLaunchError, statusCode, winHttpError))
+    {
+        return TRUE;
     }
 
-    outFile.close();
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
+    CString finalUrl = url;
+    CString fallbackUrl(url);
+    const CString httpsPrefix = _T("https://downloads.simulationcraft.org/");
+    if (fallbackUrl.Left(httpsPrefix.GetLength()).CompareNoCase(httpsPrefix) == 0)
+    {
+        fallbackUrl = _T("http://") + fallbackUrl.Mid(8);
+        if (tryDownload(fallbackUrl, curlExitCode, curlLaunchError, statusCode, winHttpError))
+        {
+            return TRUE;
+        }
+        finalUrl = fallbackUrl;
+    }
 
-    return !m_bCancelled;
+    CString msg;
+    if (curlLaunchError != ERROR_SUCCESS)
+    {
+        msg.Format(_T("download failed: %s (curl launch error=%lu, winhttp error=%lu, status=%lu)"),
+            static_cast<LPCTSTR>(finalUrl), curlLaunchError, winHttpError, statusCode);
+    }
+    else
+    {
+        msg.Format(_T("download failed: %s (curl exit=%lu, winhttp error=%lu, status=%lu)"),
+            static_cast<LPCTSTR>(finalUrl), curlExitCode, winHttpError, statusCode);
+    }
+    SetLastErrorMessage(msg);
+    return FALSE;
 }
 
 BOOL CSimcDownloader::ExtractZip(const CString& zipPath, const CString& destDir)
 {
-    // 윈도우 10/11에 내장된 tar.exe 사용 (libarchive 기반으로 .7z 지원)
-    CString cmd;
-    cmd.Format(_T("tar.exe -xf \"%s\" -C \"%s\""), (LPCTSTR)zipPath, (LPCTSTR)destDir);
+    DWORD tarExitCode = 1;
+    DWORD tarLaunchError = ERROR_SUCCESS;
 
-    STARTUPINFO si = { sizeof(si) };
-    PROCESS_INFORMATION pi;
-    DWORD dwExitCode = 1;
-    if (CreateProcess(NULL, (LPTSTR)(LPCTSTR)cmd, NULL, NULL, FALSE, CREATE_NO_WINDOW, NULL, NULL, &si, &pi))
+    CString tarArgs;
+    tarArgs.Format(_T("-xf \"%s\" -C \"%s\""), (LPCTSTR)zipPath, (LPCTSTR)destDir);
+    if (RunProcess(_T("tar.exe"), tarArgs, &tarExitCode, &tarLaunchError))
     {
-        WaitForSingleObject(pi.hProcess, 600000); // 최대 10분 대기
-        GetExitCodeProcess(pi.hProcess, &dwExitCode);
-        CloseHandle(pi.hProcess);
-        CloseHandle(pi.hThread);
-        return dwExitCode == 0;
+        return TRUE;
     }
 
+    if (tarLaunchError == ERROR_FILE_NOT_FOUND || tarLaunchError == ERROR_PATH_NOT_FOUND)
+    {
+        TCHAR systemDir[MAX_PATH] = {};
+        if (GetSystemDirectory(systemDir, MAX_PATH) > 0)
+        {
+            CString systemTar = systemDir;
+            if (!systemTar.IsEmpty() && systemTar.Right(1) != _T("\\"))
+            {
+                systemTar += _T("\\");
+            }
+            systemTar += _T("tar.exe");
+
+            if (RunProcess(systemTar, tarArgs, &tarExitCode, &tarLaunchError))
+            {
+                return TRUE;
+            }
+        }
+    }
+
+    // For .zip, also try PowerShell Expand-Archive as a fallback.
+    if (zipPath.Right(4).CompareNoCase(_T(".zip")) == 0)
+    {
+        DWORD psExitCode = 1;
+        DWORD psLaunchError = ERROR_SUCCESS;
+        CString psArgs;
+        psArgs.Format(
+            _T("-NoProfile -NonInteractive -ExecutionPolicy Bypass -Command \"try { Expand-Archive -LiteralPath '%s' -DestinationPath '%s' -Force; exit 0 } catch { exit 1 }\""),
+            static_cast<LPCTSTR>(EscapePowerShellSingleQuoted(zipPath)),
+            static_cast<LPCTSTR>(EscapePowerShellSingleQuoted(destDir)));
+
+        if (RunProcess(_T("powershell.exe"), psArgs, &psExitCode, &psLaunchError))
+        {
+            return TRUE;
+        }
+
+        if (psLaunchError != ERROR_SUCCESS)
+        {
+            SetLastErrorMessage(_T("Archive extraction tool launch failed"), psLaunchError);
+        }
+        else
+        {
+            CString msg;
+            msg.Format(_T("Archive extraction failed (tar exit=%lu, powershell exit=%lu)"), tarExitCode, psExitCode);
+            SetLastErrorMessage(msg);
+        }
+        return FALSE;
+    }
+
+    if (tarLaunchError != ERROR_SUCCESS)
+    {
+        SetLastErrorMessage(_T("Archive extraction tool launch failed"), tarLaunchError);
+    }
+    else
+    {
+        CString msg;
+        msg.Format(_T("Archive extraction failed (tar exit=%lu)"), tarExitCode);
+        SetLastErrorMessage(msg);
+    }
     return FALSE;
 }
 
@@ -352,59 +932,47 @@ BOOL CSimcDownloader::CreateDirectoryRecursive(const CString& path)
 
 BOOL CSimcDownloader::HttpGet(const CString& url, std::string& outResponse)
 {
-    HINTERNET hSession = WinHttpOpen(L"WoWSimbotQuick/1.0", WINHTTP_ACCESS_TYPE_DEFAULT_PROXY, WINHTTP_NO_PROXY_NAME, WINHTTP_NO_PROXY_BYPASS, 0);
-    if (!hSession) return FALSE;
+    TCHAR tempPath[MAX_PATH];
+    TCHAR tempFile[MAX_PATH];
+    GetTempPath(MAX_PATH, tempPath);
+    GetTempFileName(tempPath, _T("sim"), 0, tempFile);
 
-    // SSL/TLS & 리다이렉션 설정
-    DWORD dwProtocols = WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_2 | WINHTTP_FLAG_SECURE_PROTOCOL_TLS1_3;
-    WinHttpSetOption(hSession, WINHTTP_OPTION_SECURE_PROTOCOLS, &dwProtocols, sizeof(dwProtocols));
-    
-    DWORD dwRedirectPolicy = WINHTTP_OPTION_REDIRECT_POLICY_ALWAYS;
-    WinHttpSetOption(hSession, WINHTTP_OPTION_REDIRECT_POLICY, &dwRedirectPolicy, sizeof(dwRedirectPolicy));
-
-    URL_COMPONENTS urlComp = { sizeof(URL_COMPONENTS) };
-    urlComp.dwHostNameLength = (DWORD)-1;
-    urlComp.dwUrlPathLength = (DWORD)-1;
-    urlComp.dwExtraInfoLength = (DWORD)-1;
-
-    if (!WinHttpCrackUrl(std::wstring(url).c_str(), (DWORD)url.GetLength(), 0, &urlComp))
+    DWORD curlExitCode = 1;
+    DWORD curlLaunchError = ERROR_SUCCESS;
+    if (!DownloadWithCurl(url, tempFile, &curlExitCode, &curlLaunchError))
     {
-        WinHttpCloseHandle(hSession);
+        DWORD statusCode = 0;
+        DWORD winHttpError = ERROR_SUCCESS;
+        if (HttpGetWithWinHttp(url, outResponse, &statusCode, &winHttpError))
+        {
+            DeleteFile(tempFile);
+            return TRUE;
+        }
+
+        DeleteFile(tempFile);
+        CString msg;
+        if (curlLaunchError != ERROR_SUCCESS)
+        {
+            msg.Format(_T("metadata fetch failed: %s (curl launch error=%lu, winhttp error=%lu, status=%lu)"),
+                static_cast<LPCTSTR>(url), curlLaunchError, winHttpError, statusCode);
+        }
+        else
+        {
+            msg.Format(_T("metadata fetch failed: %s (curl exit=%lu, winhttp error=%lu, status=%lu)"),
+                static_cast<LPCTSTR>(url), curlExitCode, winHttpError, statusCode);
+        }
+        SetLastErrorMessage(msg);
         return FALSE;
     }
 
-    std::wstring hostName(urlComp.lpszHostName, urlComp.dwHostNameLength);
-    HINTERNET hConnect = WinHttpConnect(hSession, hostName.c_str(), urlComp.nPort, 0);
-    if (!hConnect) { WinHttpCloseHandle(hSession); return FALSE; }
+    const bool readOk = ReadFileToString(tempFile, outResponse);
+    DeleteFile(tempFile);
 
-    DWORD dwFlags = (urlComp.nPort == INTERNET_DEFAULT_HTTPS_PORT) ? WINHTTP_FLAG_SECURE : 0;
-    HINTERNET hRequest = WinHttpOpenRequest(hConnect, L"GET", urlComp.lpszUrlPath, NULL, WINHTTP_NO_REFERER, WINHTTP_DEFAULT_ACCEPT_TYPES, dwFlags);
-    if (!hRequest) { WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE; }
-
-    if (!WinHttpSendRequest(hRequest, WINHTTP_NO_ADDITIONAL_HEADERS, 0, WINHTTP_NO_REQUEST_DATA, 0, 0, 0))
+    if (!readOk || outResponse.empty())
     {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE;
+        SetLastErrorMessage(_T("Version response body was empty."));
+        return FALSE;
     }
 
-    if (!WinHttpReceiveResponse(hRequest, NULL))
-    {
-        WinHttpCloseHandle(hRequest); WinHttpCloseHandle(hConnect); WinHttpCloseHandle(hSession); return FALSE;
-    }
-
-    DWORD dwSize = 0;
-    while (WinHttpQueryDataAvailable(hRequest, &dwSize) && dwSize > 0)
-    {
-        std::vector<char> buffer(dwSize);
-        DWORD dwRead = 0;
-        if (WinHttpReadData(hRequest, buffer.data(), dwSize, &dwRead))
-        {
-            outResponse.append(buffer.data(), dwRead);
-        }
-    }
-
-    WinHttpCloseHandle(hRequest);
-    WinHttpCloseHandle(hConnect);
-    WinHttpCloseHandle(hSession);
-
-    return !outResponse.empty();
+    return TRUE;
 }
