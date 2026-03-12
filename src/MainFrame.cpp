@@ -10,6 +10,7 @@
 #include "ResultHistoryManager.h"
 #include "CharacterData.h"
 #include "SimcParser.h"
+#include "SimcDownloader.h"
 #include <filesystem>
 #include <thread>
 
@@ -109,16 +110,16 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
 
 BOOL CMainFrame::ParseSimcProfile(const std::string& str)
 {
-    UpdateStatus(_T("프로필 파싱 중..."));
+    UpdateStatus(_T("Parsing profile..."));
     if (m_pCharacterData) m_pCharacterData->Clear();
     CSimcParser parser;
     if (!parser.Parse(str, m_pCharacterData.get()))
     {
-        UpdateStatus(_T("파싱 실패"));
+        UpdateStatus(_T("Parse failed"));
         return FALSE;
     }
     OnCharacterLoaded(); 
-    UpdateStatus(_T("준비됨"));
+    UpdateStatus(_T("Ready"));
     return TRUE;
 }
 
@@ -135,23 +136,49 @@ void CMainFrame::StartSimulation()
 {
     if (!m_pCharacterData || !m_pCharacterData->IsValid())
     {
-        AfxMessageBox(_T("먼저 프로필을 파싱해 주세요."), MB_ICONWARNING);
+        AfxMessageBox(_T("Please parse a profile first."), MB_ICONWARNING);
         return;
     }
 
     CWoWSimbotQuickApp* pApp = (CWoWSimbotQuickApp*)AfxGetApp();
-    if (pApp->m_strSimcPath.IsEmpty())
+    if (pApp->m_strSimcPath.IsEmpty() || !PathFileExists(pApp->m_strSimcPath))
     {
-        AfxMessageBox(_T("시뮬레이션을 시작하기 전에 simc.exe 경로를 설정해야 합니다."), MB_ICONINFORMATION);
+        CString baseDir = CSimcDownloader::GetDefaultInstallPath();
+        std::wstring foundPath;
+        if (PathIsDirectory(baseDir))
+        {
+            try
+            {
+                for (auto const& entry : fs::recursive_directory_iterator(std::wstring(baseDir)))
+                {
+                    if (entry.path().filename() == L"simc.exe")
+                    {
+                        foundPath = entry.path().wstring();
+                        break;
+                    }
+                }
+            }
+            catch (...) {}
+        }
+
+        if (!foundPath.empty())
+        {
+            pApp->m_strSimcPath = foundPath.c_str();
+        }
+    }
+
+    if (pApp->m_strSimcPath.IsEmpty() || !PathFileExists(pApp->m_strSimcPath))
+    {
+        AfxMessageBox(_T("Set the simc.exe path before starting a simulation."), MB_ICONINFORMATION);
         pApp->OnFileSettings();
-        if (pApp->m_strSimcPath.IsEmpty()) return;
+        if (pApp->m_strSimcPath.IsEmpty() || !PathFileExists(pApp->m_strSimcPath)) return;
     }
 
     if (m_pSimSettingsPanel) m_pSimSettingsPanel->SaveSettingsToManager();
     pApp->m_bSimRunning = TRUE; 
     if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(TRUE);
     SetProgress(0);
-    UpdateStatus(_T("시뮬레이션 중..."));
+    UpdateStatus(_T("Simulating..."));
 
     CString profile = m_pCharacterData->ToSimcProfile();
     CSettingsManager* pMgr = GetSettingsManager();
@@ -217,9 +244,19 @@ LRESULT CMainFrame::OnUserSimComplete(WPARAM wp, LPARAM lp)
     }
     else 
     { 
-        ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; 
-        UpdateStatus(_T("시뮬레이션 실패"));
-        AfxMessageBox(_T("시뮬레이션 실행 중 오류가 발생했습니다. simc.exe 경로와 프로필 내용을 확인해 주세요."), MB_ICONERROR);
+        CWoWSimbotQuickApp* pApp = (CWoWSimbotQuickApp*)AfxGetApp();
+        pApp->m_bSimRunning = FALSE; 
+        UpdateStatus(_T("Simulation failed"));
+        CString detail = m_pSimcRunner ? m_pSimcRunner->GetLastError() : CString();
+        CString msg = _T("Simulation failed.");
+        if (!detail.IsEmpty())
+        {
+            msg += _T("\n\nReason: ");
+            msg += detail;
+        }
+        msg += _T("\n\nsimc path: ");
+        msg += pApp->m_strSimcPath;
+        AfxMessageBox(msg, MB_ICONERROR);
     }
     if (p != nullptr) delete p;
     return 0;

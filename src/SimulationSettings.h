@@ -54,11 +54,11 @@ struct SimulationSettings
         , usePotion(TRUE)
         , calculateScaleFactors(FALSE)
         , scaleOnly(_T("strength,intellect,agility,crit,mastery,vers,haste,weapon_dps,weapon_offhand_dps"))
-        , reportDetails(FALSE)
+        , reportDetails(TRUE)
         , threads(0)
         , singleActorBatch(TRUE)
         , optimizeExpressions(TRUE)
-        , targetError(0.0)
+        , targetError(0.05)
         , temporaryEnchant(_T("None"))
         , useCrucibleViolence(FALSE)
         , useCrucibleSustenance(FALSE)
@@ -70,7 +70,7 @@ struct SimulationSettings
         , useChaosBrand(TRUE)
         , useSkyfury(TRUE)
         , useMarkOfTheWild(TRUE)
-        , useHuntersMark(FALSE)
-        , useBleeding(FALSE)
+        , useHuntersMark(TRUE)
+        , useBleeding(TRUE)
     {}
 };

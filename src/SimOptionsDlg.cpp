@@ -219,6 +219,11 @@ void CSimOptionsDlg::OnBnClickedButtonDownloadSimc()
         if (AfxMessageBox(msg, MB_YESNO | MB_ICONQUESTION) == IDNO)
         {
             m_strSimcPath = simcPath;
+            CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
+            if (pApp)
+            {
+                pApp->m_strSimcPath = m_strSimcPath;
+            }
             UpdateData(FALSE);
             m_staticStatus.SetWindowText(_T("Using existing installation"));
             m_btnDownload.EnableWindow(TRUE);
@@ -259,6 +264,12 @@ void CSimOptionsDlg::OnDownloadComplete(BOOL success, CString* pSimcPath)
         // 다운로더에서 반환된 경로 사용
         m_strSimcPath = *pSimcPath;
         delete pSimcPath;
+
+        CWoWSimbotQuickApp* pApp = static_cast<CWoWSimbotQuickApp*>(AfxGetApp());
+        if (pApp)
+        {
+            pApp->m_strSimcPath = m_strSimcPath;
+        }
 
         UpdateData(FALSE);
         m_staticStatus.SetWindowText(_T("Download complete!"));

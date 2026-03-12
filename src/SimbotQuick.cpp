@@ -112,7 +112,7 @@ void CWoWSimbotQuickApp::OnFileSettings()
         CMainFrame* pFrame = (CMainFrame*)m_pMainWnd;
         if (pFrame)
         {
-            pFrame->UpdateStatus(_T("설정 저장됨"));
+            pFrame->UpdateStatus(_T("Settings saved"));
         }
     }
 }

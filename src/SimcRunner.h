@@ -1,4 +1,6 @@
 #pragma once
+#include <atomic>
+#include <mutex>
 
 // Simc runner class - manages simc.exe process execution
 class CSimcRunner
@@ -20,7 +22,7 @@ public:
     void Cancel();
 
     // Check if simulation is running
-    BOOL IsRunning() const { return m_bRunning; }
+    BOOL IsRunning() const { return m_bRunning.load() ? TRUE : FALSE; }
 
     // Get last error message
     CString GetLastError() const { return m_strLastError; }
@@ -41,8 +43,9 @@ private:
 private:
     HANDLE  m_hProcess;
     HANDLE  m_hThread;
-    BOOL    m_bRunning;
-    BOOL    m_bCancelRequested;
+    std::atomic_bool m_bRunning;
+    std::atomic_bool m_bCancelRequested;
+    mutable std::mutex m_processMutex;
     CString m_strLastError;
 
     // Constants

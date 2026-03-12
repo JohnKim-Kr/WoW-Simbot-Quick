@@ -42,6 +42,21 @@ protected:
     CButton     m_checkCrucibleViolence;
     CButton     m_checkCrucibleSustenance;
     CButton     m_checkCruciblePredation;
+    CButton     m_checkArcaneIntellect;
+    CButton     m_checkPowerWordFortitude;
+    CButton     m_checkBattleShout;
+    CButton     m_checkMysticTouch;
+    CButton     m_checkChaosBrand;
+    CButton     m_checkSkyfury;
+    CButton     m_checkMarkOfTheWild;
+    CButton     m_checkHuntersMark;
+    CButton     m_checkBleeding;
+    CButton     m_checkCalculateScaleFactors;
+    CButton     m_checkReportDetails;
+    CButton     m_checkSingleActorBatch;
+    CButton     m_checkOptimizeExpressions;
+    CEdit       m_editScaleOnly;
+    CEdit       m_editTargetError;
 
     // Data
     CString m_strFightStyle;
@@ -58,6 +73,21 @@ protected:
     BOOL    m_bCrucibleViolence;
     BOOL    m_bCrucibleSustenance;
     BOOL    m_bCruciblePredation;
+    BOOL    m_bArcaneIntellect;
+    BOOL    m_bPowerWordFortitude;
+    BOOL    m_bBattleShout;
+    BOOL    m_bMysticTouch;
+    BOOL    m_bChaosBrand;
+    BOOL    m_bSkyfury;
+    BOOL    m_bMarkOfTheWild;
+    BOOL    m_bHuntersMark;
+    BOOL    m_bBleeding;
+    BOOL    m_bCalculateScaleFactors;
+    BOOL    m_bReportDetails;
+    BOOL    m_bSingleActorBatch;
+    BOOL    m_bOptimizeExpressions;
+    CString m_strScaleOnly;
+    double  m_dTargetError;
 
     DECLARE_MESSAGE_MAP()
 
@@ -65,6 +95,8 @@ public:
     afx_msg void OnCbnSelchangeComboFightStyle();
     afx_msg void OnEnChangeEditDuration();
     afx_msg void OnEnChangeEditIterations();
+    afx_msg void OnEnChangeEditScaleOnly();
+    afx_msg void OnEnChangeEditTargetError();
     afx_msg void OnCbnSelchangeComboTargets();
     afx_msg void OnBnClickedCheckBuffs();
 

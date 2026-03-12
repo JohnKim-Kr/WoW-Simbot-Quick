@@ -7,12 +7,91 @@
 #include <shlobj.h>
 #include <winhttp.h>
 #include <algorithm>
+#include <cctype>
 
 using json = nlohmann::json;
 namespace fs = std::filesystem;
 
 namespace
 {
+    struct SimcVersionParts
+    {
+        int major = -1;
+        int minor = -1;
+        std::string raw;
+    };
+
+    bool ParseVersionParts(const std::string& versionText, SimcVersionParts& outParts)
+    {
+        outParts = {};
+        outParts.raw = versionText;
+        size_t pos = 0;
+
+        auto parseNumber = [&](int& outValue) -> bool
+        {
+            if (pos >= versionText.size() || !std::isdigit(static_cast<unsigned char>(versionText[pos])))
+            {
+                return false;
+            }
+
+            int value = 0;
+            while (pos < versionText.size() && std::isdigit(static_cast<unsigned char>(versionText[pos])))
+            {
+                value = (value * 10) + (versionText[pos] - '0');
+                ++pos;
+            }
+            outValue = value;
+            return true;
+        };
+
+        if (!parseNumber(outParts.major))
+        {
+            return false;
+        }
+
+        if (pos < versionText.size() && versionText[pos] == '.')
+        {
+            ++pos;
+            if (!parseNumber(outParts.minor))
+            {
+                outParts.minor = 0;
+            }
+        }
+        else
+        {
+            outParts.minor = 0;
+        }
+
+        return true;
+    }
+
+    bool IsVersionNewer(const std::string& lhs, const std::string& rhs)
+    {
+        SimcVersionParts l;
+        SimcVersionParts r;
+        const bool lOk = ParseVersionParts(lhs, l);
+        const bool rOk = ParseVersionParts(rhs, r);
+
+        if (lOk && rOk)
+        {
+            if (l.major != r.major)
+            {
+                return l.major > r.major;
+            }
+            if (l.minor != r.minor)
+            {
+                return l.minor > r.minor;
+            }
+            return lhs > rhs;
+        }
+
+        if (lOk != rOk)
+        {
+            return lOk;
+        }
+        return lhs > rhs;
+    }
+
     CString EscapeCommandLineArgument(const CString& value)
     {
         CString escaped(value);
@@ -408,6 +487,7 @@ namespace
         const std::string win64Marker = "-win64.";
 
         std::string bestFileName;
+        std::string bestVersion;
         size_t searchPos = 0;
         while (true)
         {
@@ -432,9 +512,11 @@ namespace
 
             if (markerPos != std::string::npos && isArchive)
             {
-                if (bestFileName.empty() || fileName > bestFileName)
+                const std::string version = fileName.substr(5, markerPos - 5);
+                if (bestFileName.empty() || IsVersionNewer(version, bestVersion))
                 {
                     bestFileName = fileName;
+                    bestVersion = version;
                 }
             }
 
@@ -667,7 +749,16 @@ int CSimcDownloader::CheckVersionStatus(CString& outInstalledVersion, CString& o
 
         if (!versions.empty())
         {
-            std::sort(versions.rbegin(), versions.rend());
+            std::sort(versions.begin(), versions.end(), [](const std::wstring& a, const std::wstring& b)
+            {
+                const CString aStr(a.c_str());
+                const CString bStr(b.c_str());
+                const CW2A aConv(aStr, CP_UTF8);
+                const CW2A bConv(bStr, CP_UTF8);
+                const std::string as(static_cast<const char*>(aConv));
+                const std::string bs(static_cast<const char*>(bConv));
+                return IsVersionNewer(as, bs);
+            });
             outInstalledVersion = versions[0].c_str();
             
             if (outLatestVersion.IsEmpty()) return 0;

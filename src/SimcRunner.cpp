@@ -7,8 +7,8 @@ namespace fs = std::filesystem;
 CSimcRunner::CSimcRunner()
     : m_hProcess(nullptr)
     , m_hThread(nullptr)
-    , m_bRunning(FALSE)
-    , m_bCancelRequested(FALSE)
+    , m_bRunning(false)
+    , m_bCancelRequested(false)
 {
 }
 
@@ -22,7 +22,9 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
                                  const CString& outputFile,
                                  ProgressCallback progressCallback)
 {
-    if (m_bRunning)
+    m_strLastError.Empty();
+
+    if (m_bRunning.exchange(true))
     {
         m_strLastError = _T("Simulation already running");
         return FALSE;
@@ -32,6 +34,7 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     if (!fs::exists(std::filesystem::path(std::wstring(simcPath))))
     {
         m_strLastError.Format(_T("simc.exe not found: %s"), simcPath);
+        m_bRunning.store(false);
         return FALSE;
     }
 
@@ -40,11 +43,11 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     if (profileFile.IsEmpty())
     {
         m_strLastError = _T("Failed to create profile file");
+        m_bRunning.store(false);
         return FALSE;
     }
 
-    m_bRunning = TRUE;
-    m_bCancelRequested = FALSE;
+    m_bCancelRequested.store(false);
 
     // Build command line
     CString cmdLine;
@@ -64,7 +67,7 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     {
         m_strLastError = _T("Failed to create pipe");
         DeleteFile(profileFile);
-        m_bRunning = FALSE;
+        m_bRunning.store(false);
         return FALSE;
     }
 
@@ -103,12 +106,15 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
         m_strLastError.Format(_T("Failed to start simc process: %d"), GetLastError());
         CloseHandle(hStdoutRead);
         DeleteFile(profileFile);
-        m_bRunning = FALSE;
+        m_bRunning.store(false);
         return FALSE;
     }
 
-    m_hProcess = pi.hProcess;
-    m_hThread = pi.hThread;
+    {
+        std::lock_guard<std::mutex> lock(m_processMutex);
+        m_hProcess = pi.hProcess;
+        m_hThread = pi.hThread;
+    }
 
     // Immediately notify simulation has started (0%)
     if (progressCallback)
@@ -120,10 +126,20 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     CString output;
     int lastProgress = 0;
 
-    while (!m_bCancelRequested)
+    while (!m_bCancelRequested.load())
     {
+        HANDLE processHandle = nullptr;
+        {
+            std::lock_guard<std::mutex> lock(m_processMutex);
+            processHandle = m_hProcess;
+        }
+        if (!processHandle)
+        {
+            break;
+        }
+
         DWORD exitCode = 0;
-        GetExitCodeProcess(m_hProcess, &exitCode);
+        GetExitCodeProcess(processHandle, &exitCode);
 
         // Read available output
         CString newOutput;
@@ -156,15 +172,31 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     CloseHandle(hStdoutRead);
 
     // Check if cancelled
-    if (m_bCancelRequested)
+    HANDLE processHandle = nullptr;
     {
-        TerminateProcess(m_hProcess, 1);
+        std::lock_guard<std::mutex> lock(m_processMutex);
+        processHandle = m_hProcess;
+    }
+
+    if (m_bCancelRequested.load())
+    {
+        if (processHandle)
+        {
+            DWORD exitCode = 0;
+            if (GetExitCodeProcess(processHandle, &exitCode) && exitCode == STILL_ACTIVE)
+            {
+                TerminateProcess(processHandle, 1);
+            }
+        }
         m_strLastError = _T("Simulation cancelled");
     }
     else
     {
         DWORD exitCode = 0;
-        GetExitCodeProcess(m_hProcess, &exitCode);
+        if (processHandle)
+        {
+            GetExitCodeProcess(processHandle, &exitCode);
+        }
 
         if (exitCode != 0)
         {
@@ -173,35 +205,41 @@ BOOL CSimcRunner::RunSimulation(const CString& simcPath,
     }
 
     // Clean up process handles
-    CloseHandle(m_hProcess);
-    CloseHandle(m_hThread);
-    m_hProcess = nullptr;
-    m_hThread = nullptr;
+    HANDLE threadHandle = nullptr;
+    {
+        std::lock_guard<std::mutex> lock(m_processMutex);
+        processHandle = m_hProcess;
+        threadHandle = m_hThread;
+        m_hProcess = nullptr;
+        m_hThread = nullptr;
+    }
+    if (processHandle) CloseHandle(processHandle);
+    if (threadHandle) CloseHandle(threadHandle);
 
     // DEBUG: Don't delete temporary profile file for debugging
     // DeleteFile(profileFile);
     TRACE(_T("Profile file for debugging: %s\n"), profileFile);
 
-    m_bRunning = FALSE;
+    m_bRunning.store(false);
 
-    return !m_bCancelRequested && m_strLastError.IsEmpty();
+    return !m_bCancelRequested.load() && m_strLastError.IsEmpty();
 }
 
 void CSimcRunner::Cancel()
 {
-    m_bCancelRequested = TRUE;
-
-    if (m_hProcess)
+    m_bCancelRequested.store(true);
+    HANDLE processHandle = nullptr;
     {
-        // Give it a moment to terminate gracefully
-        Sleep(500);
+        std::lock_guard<std::mutex> lock(m_processMutex);
+        processHandle = m_hProcess;
+    }
 
+    if (processHandle)
+    {
         DWORD exitCode = 0;
-        GetExitCodeProcess(m_hProcess, &exitCode);
-
-        if (exitCode == STILL_ACTIVE)
+        if (GetExitCodeProcess(processHandle, &exitCode) && exitCode == STILL_ACTIVE)
         {
-            TerminateProcess(m_hProcess, 1);
+            TerminateProcess(processHandle, 1);
         }
     }
 }

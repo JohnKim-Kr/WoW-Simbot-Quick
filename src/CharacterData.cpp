@@ -133,16 +133,36 @@ CString CCharacterData::ToSimcProfile() const
     profile += _T("\n\n");
 
     profile += _T("# Consumables\n\n");
+    if (!settings.usePotion) profile += _T("potion=disabled\n");
+    if (!settings.useFood) profile += _T("food=disabled\n");
+    if (!settings.useFlask) profile += _T("flask=disabled\n");
+    if (!settings.useRune || !settings.useAugment) profile += _T("augmentation=disabled\n");
+    if (!settings.usePotion || !settings.useFood || !settings.useFlask || !settings.useRune || !settings.useAugment)
+    {
+        profile += _T("\n");
+    }
 
     // Expansion Options
     profile += _T("# Expansion Options\n");
-    profile += _T("temporary_enchant=");
-    profile += settings.temporaryEnchant;
-    profile += _T("\n");
-    
-    profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_violence=%d\n"), settings.useCrucibleViolence ? 1 : 0);
-    profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_sustenance=%d\n"), settings.useCrucibleSustenance ? 1 : 0);
-    profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_predation=%d\n"), settings.useCruciblePredation ? 1 : 0);
+
+    // Only emit temporary_enchant when a real simc token is provided.
+    const CString temporaryEnchant = settings.temporaryEnchant;
+    if (!temporaryEnchant.IsEmpty() &&
+        temporaryEnchant.CompareNoCase(_T("None")) != 0 &&
+        temporaryEnchant.Find(_T(":")) != -1)
+    {
+        profile += _T("temporary_enchant=");
+        profile += temporaryEnchant;
+        profile += _T("\n");
+    }
+
+    // Emit midnight options only when enabled to avoid parser errors on older simc builds.
+    if (settings.useCrucibleViolence || settings.useCrucibleSustenance || settings.useCruciblePredation)
+    {
+        profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_violence=%d\n"), settings.useCrucibleViolence ? 1 : 0);
+        profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_sustenance=%d\n"), settings.useCrucibleSustenance ? 1 : 0);
+        profile.AppendFormat(_T("midnight.crucible_of_erratic_energies_predation=%d\n"), settings.useCruciblePredation ? 1 : 0);
+    }
 
     profile += _T("\n# Actors\n\n");
 
@@ -153,7 +173,7 @@ CString CCharacterData::ToSimcProfile() const
     profile.AppendFormat(_T("max_time=%d\n"), settings.duration);
     profile.AppendFormat(_T("calculate_scale_factors=%d\n"), settings.calculateScaleFactors ? 1 : 0);
     
-    if (!settings.scaleOnly.IsEmpty()) {
+    if (settings.calculateScaleFactors && !settings.scaleOnly.IsEmpty()) {
         profile += _T("scale_only=");
         profile += settings.scaleOnly;
         profile += _T("\n");

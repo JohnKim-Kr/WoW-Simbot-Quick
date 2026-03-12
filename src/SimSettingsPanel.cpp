@@ -10,6 +10,8 @@ BEGIN_MESSAGE_MAP(CSimSettingsPanel, CFormView)
     ON_CBN_SELCHANGE(2101, &CSimSettingsPanel::OnCbnSelchangeComboFightStyle)
     ON_EN_CHANGE(2102, &CSimSettingsPanel::OnEnChangeEditDuration)
     ON_EN_CHANGE(2103, &CSimSettingsPanel::OnEnChangeEditIterations)
+    ON_EN_CHANGE(IDC_EDIT_SCALE_ONLY, &CSimSettingsPanel::OnEnChangeEditScaleOnly)
+    ON_EN_CHANGE(IDC_EDIT_TARGET_ERROR, &CSimSettingsPanel::OnEnChangeEditTargetError)
     ON_CBN_SELCHANGE(2104, &CSimSettingsPanel::OnCbnSelchangeComboTargets)
     ON_BN_CLICKED(2110, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(2111, &CSimSettingsPanel::OnBnClickedCheckBuffs)
@@ -17,6 +19,22 @@ BEGIN_MESSAGE_MAP(CSimSettingsPanel, CFormView)
     ON_BN_CLICKED(2113, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(2114, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(2115, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_VIOLENCE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_SUSTENANCE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_PREDATION, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_ARCANE_INTELLECT, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_POWER_WORD_FORTITUDE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_BATTLE_SHOUT, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_MYSTIC_TOUCH, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_CHAOS_BRAND, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_SKYFURY, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_MARK_OF_THE_WILD, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_HUNTERS_MARK, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_BLEEDING, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_CALC_SCALE_FACTORS, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_REPORT_DETAILS, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_SINGLE_ACTOR_BATCH, &CSimSettingsPanel::OnBnClickedCheckBuffs)
+    ON_BN_CLICKED(IDC_CHECK_OPTIMIZE_EXPRESSIONS, &CSimSettingsPanel::OnBnClickedCheckBuffs)
 END_MESSAGE_MAP()
 
 CSimSettingsPanel::CSimSettingsPanel()
@@ -33,6 +51,21 @@ CSimSettingsPanel::CSimSettingsPanel()
     , m_bCrucibleViolence(FALSE)
     , m_bCrucibleSustenance(FALSE)
     , m_bCruciblePredation(FALSE)
+    , m_bArcaneIntellect(TRUE)
+    , m_bPowerWordFortitude(TRUE)
+    , m_bBattleShout(TRUE)
+    , m_bMysticTouch(TRUE)
+    , m_bChaosBrand(TRUE)
+    , m_bSkyfury(TRUE)
+    , m_bMarkOfTheWild(TRUE)
+    , m_bHuntersMark(TRUE)
+    , m_bBleeding(TRUE)
+    , m_bCalculateScaleFactors(FALSE)
+    , m_bReportDetails(TRUE)
+    , m_bSingleActorBatch(TRUE)
+    , m_bOptimizeExpressions(TRUE)
+    , m_strScaleOnly(_T("strength,intellect,agility,crit,mastery,vers,haste,weapon_dps,weapon_offhand_dps"))
+    , m_dTargetError(0.05)
 {
 }
 
@@ -57,6 +90,21 @@ void CSimSettingsPanel::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, 2121, m_checkCrucibleViolence);
     DDX_Control(pDX, 2122, m_checkCrucibleSustenance);
     DDX_Control(pDX, 2123, m_checkCruciblePredation);
+    DDX_Control(pDX, IDC_CHECK_ARCANE_INTELLECT, m_checkArcaneIntellect);
+    DDX_Control(pDX, IDC_CHECK_POWER_WORD_FORTITUDE, m_checkPowerWordFortitude);
+    DDX_Control(pDX, IDC_CHECK_BATTLE_SHOUT, m_checkBattleShout);
+    DDX_Control(pDX, IDC_CHECK_MYSTIC_TOUCH, m_checkMysticTouch);
+    DDX_Control(pDX, IDC_CHECK_CHAOS_BRAND, m_checkChaosBrand);
+    DDX_Control(pDX, IDC_CHECK_SKYFURY, m_checkSkyfury);
+    DDX_Control(pDX, IDC_CHECK_MARK_OF_THE_WILD, m_checkMarkOfTheWild);
+    DDX_Control(pDX, IDC_CHECK_HUNTERS_MARK, m_checkHuntersMark);
+    DDX_Control(pDX, IDC_CHECK_BLEEDING, m_checkBleeding);
+    DDX_Control(pDX, IDC_CHECK_CALC_SCALE_FACTORS, m_checkCalculateScaleFactors);
+    DDX_Control(pDX, IDC_CHECK_REPORT_DETAILS, m_checkReportDetails);
+    DDX_Control(pDX, IDC_CHECK_SINGLE_ACTOR_BATCH, m_checkSingleActorBatch);
+    DDX_Control(pDX, IDC_CHECK_OPTIMIZE_EXPRESSIONS, m_checkOptimizeExpressions);
+    DDX_Control(pDX, IDC_EDIT_SCALE_ONLY, m_editScaleOnly);
+    DDX_Control(pDX, IDC_EDIT_TARGET_ERROR, m_editTargetError);
 
     DDX_CBString(pDX, 2101, m_strFightStyle);
     DDX_Text(pDX, 2102, m_nDuration);
@@ -72,6 +120,21 @@ void CSimSettingsPanel::DoDataExchange(CDataExchange* pDX)
     DDX_Check(pDX, 2121, m_bCrucibleViolence);
     DDX_Check(pDX, 2122, m_bCrucibleSustenance);
     DDX_Check(pDX, 2123, m_bCruciblePredation);
+    DDX_Check(pDX, IDC_CHECK_ARCANE_INTELLECT, m_bArcaneIntellect);
+    DDX_Check(pDX, IDC_CHECK_POWER_WORD_FORTITUDE, m_bPowerWordFortitude);
+    DDX_Check(pDX, IDC_CHECK_BATTLE_SHOUT, m_bBattleShout);
+    DDX_Check(pDX, IDC_CHECK_MYSTIC_TOUCH, m_bMysticTouch);
+    DDX_Check(pDX, IDC_CHECK_CHAOS_BRAND, m_bChaosBrand);
+    DDX_Check(pDX, IDC_CHECK_SKYFURY, m_bSkyfury);
+    DDX_Check(pDX, IDC_CHECK_MARK_OF_THE_WILD, m_bMarkOfTheWild);
+    DDX_Check(pDX, IDC_CHECK_HUNTERS_MARK, m_bHuntersMark);
+    DDX_Check(pDX, IDC_CHECK_BLEEDING, m_bBleeding);
+    DDX_Check(pDX, IDC_CHECK_CALC_SCALE_FACTORS, m_bCalculateScaleFactors);
+    DDX_Check(pDX, IDC_CHECK_REPORT_DETAILS, m_bReportDetails);
+    DDX_Check(pDX, IDC_CHECK_SINGLE_ACTOR_BATCH, m_bSingleActorBatch);
+    DDX_Check(pDX, IDC_CHECK_OPTIMIZE_EXPRESSIONS, m_bOptimizeExpressions);
+    DDX_Text(pDX, IDC_EDIT_SCALE_ONLY, m_strScaleOnly);
+    DDX_Text(pDX, IDC_EDIT_TARGET_ERROR, m_dTargetError);
 }
 
 void CSimSettingsPanel::OnInitialUpdate()
@@ -124,6 +187,21 @@ void CSimSettingsPanel::LoadSettingsFromManager()
     m_bCrucibleViolence = settings.useCrucibleViolence;
     m_bCrucibleSustenance = settings.useCrucibleSustenance;
     m_bCruciblePredation = settings.useCruciblePredation;
+    m_bArcaneIntellect = settings.useArcaneIntellect;
+    m_bPowerWordFortitude = settings.usePowerWordFortitude;
+    m_bBattleShout = settings.useBattleShout;
+    m_bMysticTouch = settings.useMysticTouch;
+    m_bChaosBrand = settings.useChaosBrand;
+    m_bSkyfury = settings.useSkyfury;
+    m_bMarkOfTheWild = settings.useMarkOfTheWild;
+    m_bHuntersMark = settings.useHuntersMark;
+    m_bBleeding = settings.useBleeding;
+    m_bCalculateScaleFactors = settings.calculateScaleFactors;
+    m_bReportDetails = settings.reportDetails;
+    m_bSingleActorBatch = settings.singleActorBatch;
+    m_bOptimizeExpressions = settings.optimizeExpressions;
+    m_strScaleOnly = settings.scaleOnly;
+    m_dTargetError = settings.targetError;
 
     if (GetSafeHwnd())
     {
@@ -157,11 +235,28 @@ void CSimSettingsPanel::SaveSettingsToManager()
     settings.useCrucibleViolence = m_bCrucibleViolence;
     settings.useCrucibleSustenance = m_bCrucibleSustenance;
     settings.useCruciblePredation = m_bCruciblePredation;
+    settings.useArcaneIntellect = m_bArcaneIntellect;
+    settings.usePowerWordFortitude = m_bPowerWordFortitude;
+    settings.useBattleShout = m_bBattleShout;
+    settings.useMysticTouch = m_bMysticTouch;
+    settings.useChaosBrand = m_bChaosBrand;
+    settings.useSkyfury = m_bSkyfury;
+    settings.useMarkOfTheWild = m_bMarkOfTheWild;
+    settings.useHuntersMark = m_bHuntersMark;
+    settings.useBleeding = m_bBleeding;
+    settings.calculateScaleFactors = m_bCalculateScaleFactors;
+    settings.reportDetails = m_bReportDetails;
+    settings.singleActorBatch = m_bSingleActorBatch;
+    settings.optimizeExpressions = m_bOptimizeExpressions;
+    settings.scaleOnly = m_strScaleOnly;
+    settings.targetError = m_dTargetError;
 }
 
 void CSimSettingsPanel::OnCbnSelchangeComboFightStyle() { SaveSettingsToManager(); }
 void CSimSettingsPanel::OnEnChangeEditDuration() { SaveSettingsToManager(); }
 void CSimSettingsPanel::OnEnChangeEditIterations() { SaveSettingsToManager(); }
+void CSimSettingsPanel::OnEnChangeEditScaleOnly() { SaveSettingsToManager(); }
+void CSimSettingsPanel::OnEnChangeEditTargetError() { SaveSettingsToManager(); }
 void CSimSettingsPanel::OnCbnSelchangeComboTargets() { SaveSettingsToManager(); }
 void CSimSettingsPanel::OnBnClickedCheckBuffs() { SaveSettingsToManager(); }
 

@@ -53,10 +53,16 @@ void CSettingsManager::LoadSettings()
     m_currentSettings.useMarkOfTheWild = pApp->GetProfileInt(_T("Settings"), _T("UseMarkOfTheWild"), 1);
     m_currentSettings.useMysticTouch = pApp->GetProfileInt(_T("Settings"), _T("UseMysticTouch"), 1);
     m_currentSettings.useChaosBrand = pApp->GetProfileInt(_T("Settings"), _T("UseChaosBrand"), 1);
-    m_currentSettings.useBleeding = pApp->GetProfileInt(_T("Settings"), _T("UseBleeding"), 0);
+    m_currentSettings.useSkyfury = pApp->GetProfileInt(_T("Settings"), _T("UseSkyfury"), 1);
+    m_currentSettings.useHuntersMark = pApp->GetProfileInt(_T("Settings"), _T("UseHuntersMark"), 1);
+    m_currentSettings.useBleeding = pApp->GetProfileInt(_T("Settings"), _T("UseBleeding"), 1);
     
-    m_currentSettings.reportDetails = pApp->GetProfileInt(_T("Settings"), _T("ReportDetails"), 0);
+    m_currentSettings.reportDetails = pApp->GetProfileInt(_T("Settings"), _T("ReportDetails"), 1);
     m_currentSettings.calculateScaleFactors = pApp->GetProfileInt(_T("Settings"), _T("CalculateScaleFactors"), 0);
+    m_currentSettings.scaleOnly = pApp->GetProfileString(_T("Settings"), _T("ScaleOnly"), m_currentSettings.scaleOnly);
+    m_currentSettings.singleActorBatch = pApp->GetProfileInt(_T("Settings"), _T("SingleActorBatch"), 1);
+    m_currentSettings.optimizeExpressions = pApp->GetProfileInt(_T("Settings"), _T("OptimizeExpressions"), 1);
+    m_currentSettings.targetError = _tstof(pApp->GetProfileString(_T("Settings"), _T("TargetError"), _T("0.05")));
     m_currentSettings.threads = pApp->GetProfileInt(_T("Settings"), _T("Threads"), 0);
 }
 
@@ -80,10 +86,18 @@ void CSettingsManager::SaveSettings() const
     pApp->WriteProfileInt(_T("Settings"), _T("UseMarkOfTheWild"), m_currentSettings.useMarkOfTheWild);
     pApp->WriteProfileInt(_T("Settings"), _T("UseMysticTouch"), m_currentSettings.useMysticTouch);
     pApp->WriteProfileInt(_T("Settings"), _T("UseChaosBrand"), m_currentSettings.useChaosBrand);
+    pApp->WriteProfileInt(_T("Settings"), _T("UseSkyfury"), m_currentSettings.useSkyfury);
+    pApp->WriteProfileInt(_T("Settings"), _T("UseHuntersMark"), m_currentSettings.useHuntersMark);
     pApp->WriteProfileInt(_T("Settings"), _T("UseBleeding"), m_currentSettings.useBleeding);
     
     pApp->WriteProfileInt(_T("Settings"), _T("ReportDetails"), m_currentSettings.reportDetails);
     pApp->WriteProfileInt(_T("Settings"), _T("CalculateScaleFactors"), m_currentSettings.calculateScaleFactors);
+    pApp->WriteProfileString(_T("Settings"), _T("ScaleOnly"), m_currentSettings.scaleOnly);
+    pApp->WriteProfileInt(_T("Settings"), _T("SingleActorBatch"), m_currentSettings.singleActorBatch);
+    pApp->WriteProfileInt(_T("Settings"), _T("OptimizeExpressions"), m_currentSettings.optimizeExpressions);
+    CString targetError;
+    targetError.Format(_T("%.2f"), m_currentSettings.targetError);
+    pApp->WriteProfileString(_T("Settings"), _T("TargetError"), targetError);
     pApp->WriteProfileInt(_T("Settings"), _T("Threads"), m_currentSettings.threads);
 }
 
@@ -174,10 +188,9 @@ CString CSettingsManager::GenerateSimcOptions() const
     CString opt;
     opt.Format(_T("fight_style=%s\niterations=%d\nmax_time=%d\ndesired_targets=%d\n"),
         (LPCTSTR)m_currentSettings.fightStyle, m_currentSettings.iterations, m_currentSettings.duration, m_currentSettings.targetCount);
-    
-    if (!m_currentSettings.useFlask) opt += _T("flask=none\n");
-    if (!m_currentSettings.useFood) opt += _T("food=none\n");
-    if (!m_currentSettings.useRune) opt += _T("augmentation_rune=none\n");
+
+    // Do not emit legacy consumable directives (flask/food/augmentation_rune=none).
+    // Recent simc builds may reject these values/options depending on profile context.
     
     if (m_currentSettings.calculateScaleFactors) {
         opt += _T("calculate_scale_factors=1\n");
