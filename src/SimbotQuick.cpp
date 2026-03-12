@@ -49,6 +49,35 @@ BOOL CWoWSimbotQuickApp::InitInstance()
 
     m_strSimcPath = GetProfileString(_T("Settings"), _T("SimcPath"), _T(""));
 
+    // 앱 시작 시 경로가 없거나 유효하지 않으면 최신 버전 자동 감지
+    if (m_strSimcPath.IsEmpty() || !PathFileExists(m_strSimcPath))
+    {
+        CString defaultBase = CSimcDownloader::GetDefaultInstallPath();
+        if (PathIsDirectory(defaultBase))
+        {
+            std::vector<std::wstring> versions;
+            try {
+                for (auto& p : fs::directory_iterator(std::wstring(defaultBase)))
+                {
+                    if (p.is_directory())
+                    {
+                        std::wstring name = p.path().filename().wstring();
+                        if (fs::exists(p.path() / L"simc.exe"))
+                        {
+                            versions.push_back(name);
+                        }
+                    }
+                }
+            } catch (...) {}
+
+            if (!versions.empty())
+            {
+                std::sort(versions.rbegin(), versions.rend());
+                m_strSimcPath = (defaultBase + _T("\\") + versions[0].c_str() + _T("\\simc.exe"));
+            }
+        }
+    }
+
     CMainFrame* pFrame = new CMainFrame;
     if (!pFrame) return FALSE;
     

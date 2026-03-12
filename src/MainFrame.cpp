@@ -1,4 +1,5 @@
 #include "pch.h"
+#pragma execution_character_set("utf-8")
 #include "framework.h"
 #include "SimbotQuick.h"
 #include "MainFrame.h"

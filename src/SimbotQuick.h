@@ -54,12 +54,6 @@ public:
     CString GetSimcPath() const { return m_strSimcPath; }
     void SetSimcPath(const CString& path) { m_strSimcPath = path; }
 
-    CString GetBnetClientId() const { return m_strClientId; }
-    void SetBnetClientId(const CString& id) { m_strClientId = id; }
-
-    CString GetBnetClientSecret() const { return m_strClientSecret; }
-    void SetBnetClientSecret(const CString& secret) { m_strClientSecret = secret; }
-
     // Settings persistence
     void LoadSettings();
 public:
@@ -72,8 +66,6 @@ public:
 // Member variables - made public for access from dialogs
 public:
     CString m_strSimcPath;
-    CString m_strClientId;
-    CString m_strClientSecret;
     BOOL    m_bSimRunning;
 
     HACCEL m_hAccelTable;

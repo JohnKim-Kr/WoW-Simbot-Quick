@@ -81,12 +81,34 @@ void CSimOptionsDlg::LoadSettings()
 
     m_strSimcPath = pApp->m_strSimcPath;
 
-    if (m_strSimcPath.IsEmpty())
+    // 만약 설정된 경로가 비어있거나 파일이 존재하지 않으면 자동 감지 시도
+    if (m_strSimcPath.IsEmpty() || !PathFileExists(m_strSimcPath))
     {
-        CString defaultPath = CSimcDownloader::GetDefaultInstallPath() + _T("\\latest\\simc.exe");
-        if (PathFileExists(defaultPath))
+        CString defaultBase = CSimcDownloader::GetDefaultInstallPath();
+        if (PathIsDirectory(defaultBase))
         {
-            m_strSimcPath = defaultPath;
+            // 최신 버전을 찾기 위해 디렉토리 스캔
+            std::vector<std::wstring> versions;
+            try {
+                for (auto& p : fs::directory_iterator(std::wstring(defaultBase)))
+                {
+                    if (p.is_directory())
+                    {
+                        std::wstring name = p.path().filename().wstring();
+                        if (fs::exists(p.path() / L"simc.exe"))
+                        {
+                            versions.push_back(name);
+                        }
+                    }
+                }
+            } catch (...) {}
+
+            if (!versions.empty())
+            {
+                // 문자열 기준 내림차순 정렬 (최신 버전이 위로)
+                std::sort(versions.rbegin(), versions.rend());
+                m_strSimcPath = (defaultBase + _T("\\") + versions[0].c_str() + _T("\\simc.exe"));
+            }
         }
     }
 }
