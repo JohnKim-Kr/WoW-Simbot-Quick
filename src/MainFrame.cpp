@@ -11,6 +11,7 @@
 #include "CharacterData.h"
 #include "SimcParser.h"
 #include "SimcDownloader.h"
+#include "resource.h"
 #include <filesystem>
 #include <thread>
 
@@ -44,6 +45,12 @@ CMainFrame::~CMainFrame() {}
 int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CFrameWnd::OnCreate(lpCreateStruct) == -1) return -1;
+    HICON hAppIcon = (HICON)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
+    if (hAppIcon)
+    {
+        SetIcon(hAppIcon, TRUE);   // Title bar / Alt-Tab
+        SetIcon(hAppIcon, FALSE);  // Small caption icon
+    }
     if (!m_wndStatusBar.Create(this)) return -1;
     m_wndStatusBar.SetIndicators(indicators, 1);
     SetWindowText(_T("WoW Simbot Quick"));
