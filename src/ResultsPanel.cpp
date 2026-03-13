@@ -197,8 +197,16 @@ void CResultsPanel::LoadResults(const CString& resultJson)
     CResultHistoryManager* pMgr = GetResultHistoryManager();
     if (pMgr) {
         CSimResult result;
-        if (pMgr->ParseSimcJson(resultJson, result)) { DisplayResult(result); ParseSimcJsonDetailed(resultJson); }
-        else { m_editDPS.SetWindowText(_T("DPS: Error")); m_editSimTime.SetWindowText(_T("Time: Error")); }
+        if (pMgr->ParseSimcJson(resultJson, result)) {
+            DisplayResult(result);
+        }
+        else {
+            m_editDPS.SetWindowText(_T("DPS: Error"));
+            m_editSimTime.SetWindowText(_T("Time: Error"));
+        }
+        // Always parse detailed JSON so graph/rotation can still be shown
+        // even if summary parse fails on schema changes.
+        ParseSimcJsonDetailed(resultJson);
     }
 }
 
@@ -207,7 +215,7 @@ void CResultsPanel::ClearResults()
     m_strDPS.Empty(); m_strSimTime.Empty(); m_strResultJson.Empty();
     m_editDPS.SetWindowText(_T("DPS: --")); m_editSimTime.SetWindowText(_T("Time: --"));
     m_listResults.DeleteAllItems(); m_listRotation.DeleteAllItems(); m_listActions.DeleteAllItems();
-    m_dpsGraph.Clear(); m_progressSim.SetPos(0); m_dpsData.clear(); m_actionData.clear();
+    m_dpsGraph.Clear(); m_progressSim.SetPos(0); m_dpsData.clear(); m_actionData.clear(); m_rotationData.clear();
 }
 
 BOOL CResultsPanel::ParseSimcJson(const CString& jsonFile)
@@ -229,26 +237,134 @@ BOOL CResultsPanel::ParseSimcJson(const CString& jsonFile)
     } catch (...) { return FALSE; }
 }
 
-BOOL CResultsPanel::ParseSimcJsonDetailed(const CString& jsonStr)
+BOOL CResultsPanel::ParseSimcJsonDetailed(const CString& jsonFile)
 {
     try {
-        std::string jsonData = std::string(CT2A(jsonStr, CP_UTF8)); json j = json::parse(jsonData);
+        std::string filePath = std::string(CT2A(jsonFile, CP_UTF8));
+        std::ifstream file(filePath);
+        if (!file.is_open()) return FALSE;
+
+        json j;
+        file >> j;
+
         m_dpsData.clear();
-        if (j.contains("sim") && j["sim"].contains("players")) {
+        m_actionData.clear();
+        m_rotationData.clear();
+
+        if (j.contains("sim") && j["sim"].contains("players") && !j["sim"]["players"].empty()) {
             auto& player = j["sim"]["players"][0];
-            if (player.contains("collected_data") && player["collected_data"].contains("timeline")) {
-                auto& dpsData = player["collected_data"]["timeline"]["dps"];
-                for (size_t i = 0; i < dpsData.size(); ++i) {
-                    DpsDataPoint p; p.time = (double)i; p.dps = dpsData[i].get<double>(); p.count = 1; m_dpsData.push_back(p);
+            std::function<const json*(const json&, const char*)> findArrayByKey =
+                [&](const json& node, const char* key) -> const json* {
+                    if (node.is_object()) {
+                        auto it = node.find(key);
+                        if (it != node.end() && it->is_array()) {
+                            return &(*it);
+                        }
+                        for (auto itChild = node.begin(); itChild != node.end(); ++itChild) {
+                            const json* found = findArrayByKey(itChild.value(), key);
+                            if (found) return found;
+                        }
+                    }
+                    else if (node.is_array()) {
+                        for (const auto& child : node) {
+                            const json* found = findArrayByKey(child, key);
+                            if (found) return found;
+                        }
+                    }
+                    return nullptr;
+                };
+            if (player.contains("collected_data")) {
+                auto& collectedData = player["collected_data"];
+                if (collectedData.contains("timeline") &&
+                    collectedData["timeline"].contains("dps") &&
+                    collectedData["timeline"]["dps"].is_array()) {
+                    auto& dpsData = collectedData["timeline"]["dps"];
+                    for (size_t i = 0; i < dpsData.size(); ++i) {
+                        DpsDataPoint p;
+                        p.time = (double)i;
+                        p.dps = dpsData[i].get<double>();
+                        p.count = 1;
+                        m_dpsData.push_back(p);
+                    }
+                }
+                else if (collectedData.contains("timeline_dmg") &&
+                         collectedData["timeline_dmg"].contains("data") &&
+                         collectedData["timeline_dmg"]["data"].is_array()) {
+                    auto& dpsData = collectedData["timeline_dmg"]["data"];
+                    for (size_t i = 0; i < dpsData.size(); ++i) {
+                        DpsDataPoint p;
+                        p.time = (double)i;
+                        p.dps = dpsData[i].get<double>();
+                        p.count = 1;
+                        m_dpsData.push_back(p);
+                    }
                 }
             }
-            m_actionData.clear();
-            if (player.contains("actions")) {
-                for (auto& action : player["actions"]) {
-                    ActionData data; data.name = CString(action["name"].get<std::string>().c_str());
-                    data.count = action.value("num_executes", 0.0); data.totalDmg = action.value("total_amount", 0.0);
-                    data.avgDmg = action.value("avg_actual_amount", 0.0); data.dps = action.value("aps", 0.0) * data.avgDmg;
-                    data.percentage = action.value("portion_amount", 0.0) * 100.0; m_actionData.push_back(data);
+
+            // Parse time-ordered action sequence when available
+            const json* sequence = findArrayByKey(player, "action_sequence");
+            if (sequence && sequence->is_array()) {
+                for (auto& event : *sequence) {
+                    RotationEventData row;
+                    row.time = event.value("time", 0.0);
+
+                    std::string spellName = event.value("spell_name", std::string());
+                    if (spellName.empty()) {
+                        spellName = event.value("name", std::string());
+                    }
+                    row.spellName = CString(spellName.c_str());
+                    row.target = CString(event.value("target", std::string("-")).c_str());
+
+                    if (event.contains("result_amount")) {
+                        CString detail;
+                        detail.Format(_T("%.0f"), event["result_amount"].get<double>());
+                        row.detail = detail;
+                    }
+                    else if (event.contains("amount")) {
+                        CString detail;
+                        detail.Format(_T("%.0f"), event["amount"].get<double>());
+                        row.detail = detail;
+                    }
+                    else {
+                        row.detail = _T("-");
+                    }
+
+                    m_rotationData.push_back(row);
+                }
+            }
+            else {
+                // Precombat fallback when combat sequence is not available
+                const json* precombat = findArrayByKey(player, "action_sequence_precombat");
+                if (precombat && precombat->is_array()) {
+                    for (auto& event : *precombat) {
+                        RotationEventData row;
+                        row.time = event.value("time", 0.0);
+                        std::string spellName = event.value("spell_name", std::string());
+                        if (spellName.empty()) spellName = event.value("name", std::string());
+                        row.spellName = CString(spellName.c_str());
+                        row.target = CString(event.value("target", std::string("-")).c_str());
+                        row.detail = _T("precombat");
+                        m_rotationData.push_back(row);
+                    }
+                }
+            }
+
+            // Fallback summary action list
+            const json* actions = findArrayByKey(player, "actions");
+            if (actions && actions->is_array()) {
+                for (auto& action : *actions) {
+                    if (!action.is_object()) continue;
+                    if (!action.contains("name")) continue;
+                    ActionData data;
+                    std::string actionName = action.value("name", std::string());
+                    if (actionName.empty()) continue;
+                    data.name = CString(actionName.c_str());
+                    data.count = action.value("num_executes", 0.0);
+                    data.totalDmg = action.value("total_amount", 0.0);
+                    data.avgDmg = action.value("avg_actual_amount", 0.0);
+                    data.dps = action.value("aps", 0.0) * data.avgDmg;
+                    data.percentage = action.value("portion_amount", 0.0) * 100.0;
+                    m_actionData.push_back(data);
                 }
                 std::sort(m_actionData.begin(), m_actionData.end(), [](const ActionData& a, const ActionData& b) { return a.totalDmg > b.totalDmg; });
             }
@@ -275,6 +391,21 @@ void CResultsPanel::DisplayDpsGraph() { if (!m_dpsData.empty()) m_dpsGraph.SetDa
 void CResultsPanel::DisplayRotation()
 {
     m_listRotation.DeleteAllItems(); int idx = 0;
+    if (!m_rotationData.empty()) {
+        for (const auto& event : m_rotationData) {
+            CString timeText;
+            timeText.Format(_T("%.3f"), event.time);
+            m_listRotation.InsertItem(idx, timeText);
+            m_listRotation.SetItemText(idx, 1, event.spellName);
+            m_listRotation.SetItemText(idx, 2, event.target);
+            m_listRotation.SetItemText(idx, 3, event.detail);
+            idx++;
+            if (idx >= 500) break;
+        }
+        return;
+    }
+
+    // Fallback to aggregate actions when sequence is not available
     if (m_actionData.empty()) { m_listRotation.InsertItem(idx, _T("-")); m_listRotation.SetItemText(idx, 1, _T("데이터 없음")); return; }
     for (const auto& action : m_actionData) {
         if (action.count > 0) {

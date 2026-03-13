@@ -114,7 +114,8 @@ void CMainFrame::OnSize(UINT nType, int cx, int cy)
     }
 
     int lw = cx * 2 / 3;
-    int th = cy * 2 / 3;
+    // Reduce profile panel height and give more space to results tabs
+    int th = cy / 3;
 
     if (m_pCharInputPanel && m_pCharInputPanel->GetSafeHwnd())
         m_pCharInputPanel->MoveWindow(0, 0, lw, th);

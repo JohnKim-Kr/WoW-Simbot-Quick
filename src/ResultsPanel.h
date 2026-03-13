@@ -21,6 +21,15 @@ struct ActionData
     double percentage;  // % of total damage
 };
 
+// Time-ordered action entry from simc action_sequence
+struct RotationEventData
+{
+    double time;        // Event time in seconds
+    CString spellName;  // Spell or action name
+    CString target;     // Target name
+    CString detail;     // Amount or fallback detail
+};
+
 // DPS Graph Control
 class CDpsGraphCtrl : public CStatic
 {
@@ -81,6 +90,7 @@ protected:
     CString m_strResultJson;
     std::vector<DpsDataPoint> m_dpsData;
     std::vector<ActionData> m_actionData;
+    std::vector<RotationEventData> m_rotationData;
 
     DECLARE_MESSAGE_MAP()
 
