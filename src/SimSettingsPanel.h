@@ -39,9 +39,6 @@ protected:
     CButton     m_checkPotion;
 
     CComboBox   m_comboTempEnchant;
-    CButton     m_checkCrucibleViolence;
-    CButton     m_checkCrucibleSustenance;
-    CButton     m_checkCruciblePredation;
     CButton     m_checkArcaneIntellect;
     CButton     m_checkPowerWordFortitude;
     CButton     m_checkBattleShout;

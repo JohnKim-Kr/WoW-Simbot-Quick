@@ -19,9 +19,6 @@ BEGIN_MESSAGE_MAP(CSimSettingsPanel, CFormView)
     ON_BN_CLICKED(2113, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(2114, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(2115, &CSimSettingsPanel::OnBnClickedCheckBuffs)
-    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_VIOLENCE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
-    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_SUSTENANCE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
-    ON_BN_CLICKED(IDC_CHECK_CRUCIBLE_PREDATION, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(IDC_CHECK_ARCANE_INTELLECT, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(IDC_CHECK_POWER_WORD_FORTITUDE, &CSimSettingsPanel::OnBnClickedCheckBuffs)
     ON_BN_CLICKED(IDC_CHECK_BATTLE_SHOUT, &CSimSettingsPanel::OnBnClickedCheckBuffs)
@@ -87,9 +84,6 @@ void CSimSettingsPanel::DoDataExchange(CDataExchange* pDX)
     DDX_Control(pDX, 2114, m_checkBloodlust);
     DDX_Control(pDX, 2115, m_checkPotion);
     DDX_Control(pDX, 2120, m_comboTempEnchant);
-    DDX_Control(pDX, 2121, m_checkCrucibleViolence);
-    DDX_Control(pDX, 2122, m_checkCrucibleSustenance);
-    DDX_Control(pDX, 2123, m_checkCruciblePredation);
     DDX_Control(pDX, IDC_CHECK_ARCANE_INTELLECT, m_checkArcaneIntellect);
     DDX_Control(pDX, IDC_CHECK_POWER_WORD_FORTITUDE, m_checkPowerWordFortitude);
     DDX_Control(pDX, IDC_CHECK_BATTLE_SHOUT, m_checkBattleShout);
@@ -117,9 +111,6 @@ void CSimSettingsPanel::DoDataExchange(CDataExchange* pDX)
     DDX_Check(pDX, 2114, m_bBloodlust);
     DDX_Check(pDX, 2115, m_bPotion);
     DDX_CBString(pDX, 2120, m_strTempEnchant);
-    DDX_Check(pDX, 2121, m_bCrucibleViolence);
-    DDX_Check(pDX, 2122, m_bCrucibleSustenance);
-    DDX_Check(pDX, 2123, m_bCruciblePredation);
     DDX_Check(pDX, IDC_CHECK_ARCANE_INTELLECT, m_bArcaneIntellect);
     DDX_Check(pDX, IDC_CHECK_POWER_WORD_FORTITUDE, m_bPowerWordFortitude);
     DDX_Check(pDX, IDC_CHECK_BATTLE_SHOUT, m_bBattleShout);
@@ -156,7 +147,6 @@ void CSimSettingsPanel::OnInitialUpdate()
     }
 
     auto tempEnchants = CSettingsManager::GetTempEnchants();
-    m_comboTempEnchant.AddString(_T("None"));
     for (const auto& enchant : tempEnchants)
     {
         m_comboTempEnchant.AddString(enchant);
