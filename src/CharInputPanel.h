@@ -23,7 +23,6 @@ protected:
     // Controls
     CStatic     m_staticLabel;
     CEdit       m_editProfile;
-    CButton     m_btnParse;
     CButton     m_btnClear;
     CButton     m_btnSettings;
     CButton     m_btnSimControl;
@@ -34,14 +33,13 @@ protected:
     DECLARE_MESSAGE_MAP()
 
 public:
-    afx_msg void OnBnClickedButtonParse();
     afx_msg void OnBnClickedButtonClear();
     afx_msg void OnBnClickedButtonSettings();
     afx_msg void OnBnClickedButtonSimControl();
 
     void UpdateSimButtonState(BOOL bRunning);
 
-    void ParseSimcProfile();
+    BOOL ParseSimcProfile();
     void ClearProfile();
     void DisplayCharacterInfo(const CCharacterData* pCharData);
     void ClearCharacterInfo();

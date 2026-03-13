@@ -11,7 +11,6 @@ IMPLEMENT_DYNCREATE(CCharInputPanel, CView)
 BEGIN_MESSAGE_MAP(CCharInputPanel, CView)
     ON_WM_CREATE()
     ON_WM_SIZE()
-    ON_BN_CLICKED(IDC_BUTTON_LOAD, &CCharInputPanel::OnBnClickedButtonParse)
     ON_BN_CLICKED(IDC_BUTTON_CLEAR, &CCharInputPanel::OnBnClickedButtonClear)
     ON_BN_CLICKED(ID_BUTTON_SETTINGS, &CCharInputPanel::OnBnClickedButtonSettings)
     ON_BN_CLICKED(ID_BUTTON_RUN_SIM, &CCharInputPanel::OnBnClickedButtonSimControl)
@@ -53,12 +52,8 @@ int CCharInputPanel::OnCreate(LPCREATESTRUCT lpCreateStruct)
 
     y += 210;
 
-    if (!m_btnParse.Create(_T("프로필 파싱"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        CRect(x, y, x + w/2 - 5, y + h), this, IDC_BUTTON_LOAD))
-        return -1;
-
     if (!m_btnClear.Create(_T("초기화"), WS_CHILD | WS_VISIBLE | BS_PUSHBUTTON,
-        CRect(x + w/2 + 5, y, x + w, y + h), this, IDC_BUTTON_CLEAR))
+        CRect(x, y, x + w, y + h), this, IDC_BUTTON_CLEAR))
         return -1;
 
     y += h + 5;
@@ -83,13 +78,16 @@ void CCharInputPanel::OnSize(UINT nType, int cx, int cy)
     if (m_staticLabel.GetSafeHwnd())
     {
         int x = 10, y = 10, w = cx - 20, h = 25;
+        const int bottomMargin = 10;
+        const int fixedAreaHeight = 25 + h + 5 + h + 5 + h + bottomMargin; // label area + 3 buttons + gaps + bottom
+        int editHeight = cy - y - fixedAreaHeight;
+        if (editHeight < 120) editHeight = 120;
 
         m_staticLabel.MoveWindow(x, y, w, 20);
         y += 25;
-        m_editProfile.MoveWindow(x, y, w, 200);
-        y += 210;
-        m_btnParse.MoveWindow(x, y, w/2 - 5, h);
-        m_btnClear.MoveWindow(x + w/2 + 5, y, w/2 - 5, h);
+        m_editProfile.MoveWindow(x, y, w, editHeight);
+        y += editHeight + 10;
+        m_btnClear.MoveWindow(x, y, w, h);
         y += h + 5;
         m_btnSettings.MoveWindow(x, y, w, h);
         y += h + 5;
@@ -100,11 +98,6 @@ void CCharInputPanel::OnSize(UINT nType, int cx, int cy)
 void CCharInputPanel::OnInitialUpdate()
 {
     CView::OnInitialUpdate();
-}
-
-void CCharInputPanel::OnBnClickedButtonParse()
-{
-    ParseSimcProfile();
 }
 
 void CCharInputPanel::OnBnClickedButtonClear()
@@ -132,6 +125,11 @@ void CCharInputPanel::OnBnClickedButtonSimControl()
         }
         else
         {
+            if (!ParseSimcProfile())
+            {
+                UpdateSimButtonState(FALSE);
+                return;
+            }
             pApp->OnToolsRunSim();
         }
         UpdateSimButtonState(pApp->IsSimRunning());
@@ -146,14 +144,14 @@ void CCharInputPanel::UpdateSimButtonState(BOOL bRunning)
     }
 }
 
-void CCharInputPanel::ParseSimcProfile()
+BOOL CCharInputPanel::ParseSimcProfile()
 {
     m_editProfile.GetWindowText(m_strProfile);
 
     if (m_strProfile.IsEmpty())
     {
         AfxMessageBox(_T("먼저 simc 프로필을 붙여넣어 주세요."), MB_ICONWARNING);
-        return;
+        return FALSE;
     }
 
     std::string profileStr = std::string(CT2A(m_strProfile));
@@ -161,19 +159,15 @@ void CCharInputPanel::ParseSimcProfile()
     CMainFrame* pFrame = static_cast<CMainFrame*>(AfxGetMainWnd());
     if (pFrame)
     {
-        m_btnParse.EnableWindow(FALSE);
         BOOL success = pFrame->ParseSimcProfile(profileStr);
-        m_btnParse.EnableWindow(TRUE);
 
-        if (success)
-        {
-            AfxMessageBox(_T("프로필 파싱 성공!"), MB_ICONINFORMATION);
-        }
-        else
+        if (!success)
         {
             AfxMessageBox(_T("프로필 파싱 실패."), MB_ICONERROR);
         }
+        return success;
     }
+    return FALSE;
 }
 
 void CCharInputPanel::ClearProfile()

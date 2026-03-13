@@ -45,11 +45,22 @@ CMainFrame::~CMainFrame() {}
 int CMainFrame::OnCreate(LPCREATESTRUCT lpCreateStruct)
 {
     if (CFrameWnd::OnCreate(lpCreateStruct) == -1) return -1;
-    HICON hAppIcon = (HICON)::LoadImage(AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME), IMAGE_ICON, 0, 0, LR_DEFAULTSIZE);
-    if (hAppIcon)
+    HICON hLargeIcon = (HICON)::LoadImage(
+        AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME), IMAGE_ICON,
+        GetSystemMetrics(SM_CXICON), GetSystemMetrics(SM_CYICON), LR_DEFAULTCOLOR);
+    HICON hSmallIcon = (HICON)::LoadImage(
+        AfxGetInstanceHandle(), MAKEINTRESOURCE(IDR_MAINFRAME), IMAGE_ICON,
+        GetSystemMetrics(SM_CXSMICON), GetSystemMetrics(SM_CYSMICON), LR_DEFAULTCOLOR);
+
+    if (hLargeIcon)
     {
-        SetIcon(hAppIcon, TRUE);   // Title bar / Alt-Tab
-        SetIcon(hAppIcon, FALSE);  // Small caption icon
+        SetIcon(hLargeIcon, TRUE); // Title bar / Alt-Tab / taskbar large icon candidate
+        SetClassLongPtr(GetSafeHwnd(), GCLP_HICON, (LONG_PTR)hLargeIcon);
+    }
+    if (hSmallIcon)
+    {
+        SetIcon(hSmallIcon, FALSE); // Small caption icon
+        SetClassLongPtr(GetSafeHwnd(), GCLP_HICONSM, (LONG_PTR)hSmallIcon);
     }
     if (!m_wndStatusBar.Create(this)) return -1;
     m_wndStatusBar.SetIndicators(indicators, 1);
@@ -217,11 +228,12 @@ void CMainFrame::OnSimulationComplete(const CString& res)
 {
     ((CWoWSimbotQuickApp*)AfxGetApp())->m_bSimRunning = FALSE; 
     if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(FALSE);
-    SetProgress(100);
+    SetProgress(55);
     CResultHistoryManager* h = GetResultHistoryManager();
     if (h) {
         CSimResult r;
         if (h->ParseSimcJson(res, r)) {
+            SetProgress(65);
             if (m_pCharacterData) {
                 r.GetBuildInfo().characterName = CString(m_pCharacterData->GetName().c_str());
                 r.GetBuildInfo().server = CString(m_pCharacterData->GetRealm().c_str());
@@ -233,13 +245,25 @@ void CMainFrame::OnSimulationComplete(const CString& res)
             CSettingsManager* s = GetSettingsManager();
             if (s) { r.SetFightStyle(s->GetCurrentSettings().fightStyle); r.SetDuration(s->GetCurrentSettings().duration); r.SetIterations(s->GetCurrentSettings().iterations); }
             h->AddResult(r);
+            SetProgress(80);
         }
     }
+    SetProgress(90);
     if (m_pResultsPanel) m_pResultsPanel->LoadResults(res);
+    SetProgress(100);
     UpdateStatus(_T("Complete"));
 }
 
-LRESULT CMainFrame::OnUserSimProgress(WPARAM wp, LPARAM) { int p = (int)wp; SetProgress(p); return 0; }
+LRESULT CMainFrame::OnUserSimProgress(WPARAM wp, LPARAM)
+{
+    int simcProgress = (int)wp;
+    if (simcProgress < 0) simcProgress = 0;
+    if (simcProgress > 100) simcProgress = 100;
+    // Stage 1: simc execution progress mapped to 0~50
+    const int mappedProgress = simcProgress / 2;
+    SetProgress(mappedProgress);
+    return 0;
+}
 void CMainFrame::OnSettingsChanged() { if (m_pSimSettingsPanel) m_pSimSettingsPanel->LoadSettingsFromManager(); }
 
 LRESULT CMainFrame::OnUserSimComplete(WPARAM wp, LPARAM lp)
