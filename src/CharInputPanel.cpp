@@ -16,9 +16,7 @@ BEGIN_MESSAGE_MAP(CCharInputPanel, CView)
     ON_BN_CLICKED(ID_BUTTON_RUN_SIM, &CCharInputPanel::OnBnClickedButtonSimControl)
 END_MESSAGE_MAP()
 
-CCharInputPanel::CCharInputPanel()
-{
-}
+CCharInputPanel::CCharInputPanel() {}
 
 CCharInputPanel::~CCharInputPanel()
 {
@@ -79,7 +77,7 @@ void CCharInputPanel::OnSize(UINT nType, int cx, int cy)
     {
         int x = 10, y = 10, w = cx - 20, h = 25;
         const int bottomMargin = 10;
-        const int fixedAreaHeight = 25 + h + 5 + h + 5 + h + bottomMargin; // label area + 3 buttons + gaps + bottom
+        const int fixedAreaHeight = 25 + h + 5 + h + 5 + h + bottomMargin;
         int editHeight = cy - y - fixedAreaHeight;
         if (editHeight < 120) editHeight = 120;
 
@@ -104,6 +102,14 @@ void CCharInputPanel::OnBnClickedButtonClear()
 {
     ClearProfile();
 }
+
+void CCharInputPanel::OnBnClickedCheckTrinket1() {}
+void CCharInputPanel::OnBnClickedCheckTrinket2() {}
+void CCharInputPanel::OnCbnSelchangeComboTrinketFilter() {}
+void CCharInputPanel::OnCbnSelchangeComboTrinket1() {}
+void CCharInputPanel::OnCbnSelchangeComboTrinket2() {}
+void CCharInputPanel::OnCbnSelchangeComboTrinket1ItemLevel() {}
+void CCharInputPanel::OnCbnSelchangeComboTrinket2ItemLevel() {}
 
 void CCharInputPanel::OnBnClickedButtonSettings()
 {
@@ -130,6 +136,7 @@ void CCharInputPanel::OnBnClickedButtonSimControl()
                 UpdateSimButtonState(FALSE);
                 return;
             }
+
             pApp->OnToolsRunSim();
         }
         UpdateSimButtonState(pApp->IsSimRunning());
@@ -179,9 +186,15 @@ void CCharInputPanel::ClearProfile()
 
 void CCharInputPanel::DisplayCharacterInfo(const CCharacterData* pCharData)
 {
-    // Information display removed as per requirement.
+    UNREFERENCED_PARAMETER(pCharData);
 }
 
-void CCharInputPanel::ClearCharacterInfo()
-{
-}
+void CCharInputPanel::ClearCharacterInfo() {}
+void CCharInputPanel::PopulateTrinketCombos(BOOL preserveSelection) { UNREFERENCED_PARAMETER(preserveSelection); }
+void CCharInputPanel::PopulateItemLevelPresets(CComboBox& combo, const CTrinketOption* option, BOOL preserveSelection) { UNREFERENCED_PARAMETER(combo); UNREFERENCED_PARAMETER(option); UNREFERENCED_PARAMETER(preserveSelection); }
+void CCharInputPanel::UpdateTrinketControlState() {}
+void CCharInputPanel::UpdateTrinketSelectionSummary() {}
+void CCharInputPanel::SyncTrinketSelectionsToCharacterData(CCharacterData* pCharData) const { UNREFERENCED_PARAMETER(pCharData); }
+int CCharInputPanel::GetSelectedTrinketEntryId(const CComboBox& combo) const { UNREFERENCED_PARAMETER(combo); return 0; }
+int CCharInputPanel::GetSelectedFilterIndex() const { return 0; }
+double CCharInputPanel::GetSelectedItemLevel(const CComboBox& combo) const { UNREFERENCED_PARAMETER(combo); return 0.0; }

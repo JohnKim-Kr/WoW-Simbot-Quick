@@ -42,10 +42,11 @@ public:
         uint32_t id;
         double itemLevel;
         uint32_t enchantId;
+        uint32_t contextId;
         std::vector<uint32_t> gemIds;
         std::vector<uint32_t> bonusIds;
 
-        ItemData() : slot(ItemSlot::NONE), id(0), itemLevel(0.0), enchantId(0) {}
+        ItemData() : slot(ItemSlot::NONE), id(0), itemLevel(0.0), enchantId(0), contextId(0) {}
     };
 
     // Equipment slot structure (for API data)
@@ -83,6 +84,19 @@ public:
         int rank;
 
         Talent() : talentId(0), spellId(0), rank(0) {}
+    };
+
+    struct TrinketOverrideSelection
+    {
+        bool enabled = false;
+        ItemSlot slot = ItemSlot::NONE;
+        uint32_t itemId = 0;
+        double itemLevel = 0.0;
+        std::string displayName;
+        std::string simcToken;
+        std::vector<uint32_t> bonusIds;
+        uint32_t contextId = 0;
+        bool uniqueEquipped = true;
     };
 
 public:
@@ -142,6 +156,7 @@ public:
 
     // Convert to simc profile format
     CString ToSimcProfile() const;
+    BOOL ValidateTrinketOverrides(CString& errorMessage) const;
 
     // Map class name to simc class name
     static std::string MapClassToSimc(const std::string& className);
@@ -157,6 +172,11 @@ public:
 
     // Calculate average item level from equipped items
     void CalculateItemLevelFromItems();
+    const ItemData* FindItem(ItemSlot slot) const;
+    CString DescribeItemSlot(ItemSlot slot) const;
+    void SetTrinketOverride(const TrinketOverrideSelection& selection);
+    void ClearTrinketOverride(ItemSlot slot);
+    const TrinketOverrideSelection* GetTrinketOverride(ItemSlot slot) const;
 
 private:
     // Basic info
@@ -175,6 +195,8 @@ private:
 
     // Items (from simc parser)
     std::vector<ItemData> m_items;
+    TrinketOverrideSelection m_trinket1Override;
+    TrinketOverrideSelection m_trinket2Override;
 
     // Talents
     std::vector<int> m_talentSpellIds;

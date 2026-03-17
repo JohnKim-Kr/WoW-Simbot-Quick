@@ -135,6 +135,7 @@
     <ClInclude Include="src\Logger.h" />
     <ClInclude Include="src\LogViewerDlg.h" />
     <ClInclude Include="src\DebugTools.h" />
+    <ClInclude Include="src\TrinketData.h" />
   </ItemGroup>
   <ItemGroup>
     <ClCompile Include="src\MainFrame.cpp" />
@@ -159,6 +160,7 @@
     <ClCompile Include="src\Logger.cpp" />
     <ClCompile Include="src\LogViewerDlg.cpp" />
     <ClCompile Include="src\DebugTools.cpp" />
+    <ClCompile Include="src\TrinketData.cpp" />
   </ItemGroup>
   <ItemGroup>
     <ResourceCompile Include="resources\WoWSimbotQuick.rc" />

@@ -285,6 +285,19 @@ BOOL CSimcParser::ParseGearLine(const std::string& line, CCharacterData* pOutDat
             }
         }
 
+        size_t contextPos = line.find("context=");
+        if (contextPos != std::string::npos)
+        {
+            size_t eqPos = line.find('=', contextPos);
+            if (eqPos != std::string::npos)
+            {
+                size_t endPos = line.find(',', eqPos);
+                if (endPos == std::string::npos)
+                    endPos = line.length();
+                try { item.contextId = std::stoul(line.substr(eqPos + 1, endPos - eqPos - 1)); } catch (...) {}
+            }
+        }
+
         // Parse item level: ilevel=636
         size_t ilvlPos = line.find("ilevel=");
         if (ilvlPos != std::string::npos)

@@ -41,6 +41,19 @@ struct SimulationSettings
     BOOL useHuntersMark;
     BOOL useBleeding;
 
+    // Trinket Override UI State
+    BOOL useTrinket1Override;
+    BOOL useTrinket2Override;
+    int trinketFilterIndex;
+    int trinket1EntryId;
+    int trinket2EntryId;
+    CString trinket1BonusId;
+    CString trinket2BonusId;
+    CString trinket1Context;
+    CString trinket2Context;
+    CString trinket1ItemLevel;
+    CString trinket2ItemLevel;
+
     SimulationSettings()
         : fightStyle(_T("patchwerk"))
         , duration(300)
@@ -72,5 +85,10 @@ struct SimulationSettings
         , useMarkOfTheWild(TRUE)
         , useHuntersMark(TRUE)
         , useBleeding(TRUE)
+        , useTrinket1Override(FALSE)
+        , useTrinket2Override(FALSE)
+        , trinketFilterIndex(0)
+        , trinket1EntryId(0)
+        , trinket2EntryId(0)
     {}
 };

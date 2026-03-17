@@ -148,6 +148,7 @@ void CMainFrame::OnCharacterLoaded()
         CSettingsManager* pMgr = GetSettingsManager();
         if (pMgr) { pMgr->GetCurrentSettings() = m_pCharacterData->GetSettings(); if (m_pSimSettingsPanel) m_pSimSettingsPanel->LoadSettingsFromManager(); }
         if (m_pCharInputPanel) m_pCharInputPanel->DisplayCharacterInfo(m_pCharacterData.get());
+        if (m_pSimSettingsPanel) m_pSimSettingsPanel->DisplayCharacterInfo(m_pCharacterData.get());
     }
 }
 
@@ -156,6 +157,24 @@ void CMainFrame::StartSimulation()
     if (!m_pCharacterData || !m_pCharacterData->IsValid())
     {
         AfxMessageBox(_T("Please parse a profile first."), MB_ICONWARNING);
+        return;
+    }
+
+    CString trinketValidationError;
+    if (m_pSimSettingsPanel != nullptr && !m_pSimSettingsPanel->ValidateTrinketInputs(trinketValidationError))
+    {
+        AfxMessageBox(trinketValidationError, MB_ICONWARNING);
+        return;
+    }
+
+    if (m_pSimSettingsPanel)
+    {
+        m_pSimSettingsPanel->SaveSettingsToManager();
+    }
+
+    if (!m_pCharacterData->ValidateTrinketOverrides(trinketValidationError))
+    {
+        AfxMessageBox(trinketValidationError, MB_ICONWARNING);
         return;
     }
 
@@ -193,7 +212,6 @@ void CMainFrame::StartSimulation()
         if (pApp->m_strSimcPath.IsEmpty() || !PathFileExists(pApp->m_strSimcPath)) return;
     }
 
-    if (m_pSimSettingsPanel) m_pSimSettingsPanel->SaveSettingsToManager();
     pApp->m_bSimRunning = TRUE; 
     if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(TRUE);
     SetProgress(0);
@@ -278,6 +296,7 @@ LRESULT CMainFrame::OnUserSimComplete(WPARAM wp, LPARAM lp)
     { 
         CWoWSimbotQuickApp* pApp = (CWoWSimbotQuickApp*)AfxGetApp();
         pApp->m_bSimRunning = FALSE; 
+        if (m_pCharInputPanel) m_pCharInputPanel->UpdateSimButtonState(FALSE);
         UpdateStatus(_T("Simulation failed"));
         CString detail = m_pSimcRunner ? m_pSimcRunner->GetLastError() : CString();
         CString msg = _T("Simulation failed.");

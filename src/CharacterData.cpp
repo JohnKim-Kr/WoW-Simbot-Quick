@@ -1,6 +1,92 @@
 #include "pch.h"
 #include "framework.h"
 #include "CharacterData.h"
+#include <map>
+#include <cctype>
+
+namespace
+{
+    void AppendItemLine(CString& profile, const CString& slotName, const CString& baseToken,
+        uint32_t itemId, const std::vector<uint32_t>& bonusIds, const std::vector<uint32_t>& gemIds,
+        uint32_t enchantId, uint32_t contextId, double itemLevel)
+    {
+        profile += slotName;
+        profile += _T("=");
+        profile += baseToken;
+
+        if (itemId > 0)
+        {
+            CString itemIdText;
+            itemIdText.Format(_T(",id=%u"), itemId);
+            profile += itemIdText;
+        }
+
+        if (!bonusIds.empty())
+        {
+            profile += _T(",bonus_id=");
+            for (size_t i = 0; i < bonusIds.size(); ++i)
+            {
+                if (i > 0) profile += _T("/");
+                CString bonusId;
+                bonusId.Format(_T("%u"), bonusIds[i]);
+                profile += bonusId;
+            }
+        }
+
+        if (!gemIds.empty())
+        {
+            profile += _T(",gem_id=");
+            for (size_t i = 0; i < gemIds.size(); ++i)
+            {
+                if (i > 0) profile += _T("/");
+                CString gemId;
+                gemId.Format(_T("%u"), gemIds[i]);
+                profile += gemId;
+            }
+        }
+
+        if (enchantId > 0)
+        {
+            CString enchant;
+            enchant.Format(_T(",enchant_id=%u"), enchantId);
+            profile += enchant;
+        }
+
+        if (contextId > 0)
+        {
+            CString context;
+            context.Format(_T(",context=%u"), contextId);
+            profile += context;
+        }
+
+        if (itemLevel > 0.0)
+        {
+            CString itemLevelText;
+            itemLevelText.Format(_T(",ilevel=%.0f"), itemLevel);
+            profile += itemLevelText;
+        }
+
+        profile += _T("\n");
+    }
+
+    CString JoinBonusIds(const std::vector<uint32_t>& bonusIds)
+    {
+        CString joined;
+        for (size_t i = 0; i < bonusIds.size(); ++i)
+        {
+            if (i > 0)
+            {
+                joined += _T("/");
+            }
+
+            CString value;
+            value.Format(_T("%u"), bonusIds[i]);
+            joined += value;
+        }
+
+        return joined;
+    }
+}
 
 CCharacterData::CCharacterData()
     : m_nLevel(0)
@@ -25,6 +111,8 @@ void CCharacterData::Clear()
     m_strSoulbind.clear();
     m_equipment.clear();
     m_items.clear();
+    m_trinket1Override = TrinketOverrideSelection();
+    m_trinket2Override = TrinketOverrideSelection();
     m_talentSpellIds.clear();
     m_talents.clear();
     m_talentData.clear();
@@ -87,45 +175,44 @@ CString CCharacterData::ToSimcProfile() const
     {
         std::string simcSlot = ItemSlotToSimc(item.slot);
         if (simcSlot.empty()) continue;
-
-        profile += CA2T(simcSlot.c_str());
-        profile += _T("=,id=");
-        CString itemId;
-        itemId.Format(_T("%u"), item.id);
-        profile += itemId;
-
-        if (!item.bonusIds.empty())
+        if ((item.slot == ItemSlot::TRINKET1 && m_trinket1Override.enabled) ||
+            (item.slot == ItemSlot::TRINKET2 && m_trinket2Override.enabled))
         {
-            profile += _T(",bonus_id=");
-            for (size_t i = 0; i < item.bonusIds.size(); ++i)
+            continue;
+        }
+
+        const CString slotName(static_cast<LPCWSTR>(CA2W(simcSlot.c_str())));
+        AppendItemLine(profile, slotName, _T(""), item.id, item.bonusIds, item.gemIds, item.enchantId, item.contextId, item.itemLevel);
+    }
+
+    const TrinketOverrideSelection* overrides[] = { &m_trinket1Override, &m_trinket2Override };
+    for (const TrinketOverrideSelection* overrideSelection : overrides)
+    {
+        if (!overrideSelection->enabled || overrideSelection->slot == ItemSlot::NONE)
+        {
+            continue;
+        }
+
+        const std::string simcSlot = ItemSlotToSimc(overrideSelection->slot);
+        if (simcSlot.empty())
+        {
+            continue;
+        }
+
+        double overrideItemLevel = overrideSelection->itemLevel;
+        if (overrideItemLevel <= 0.0)
+        {
+            const ItemData* currentSlotItem = FindItem(overrideSelection->slot);
+            if (currentSlotItem != nullptr)
             {
-                if (i > 0) profile += _T("/");
-                CString bonusId;
-                bonusId.Format(_T("%u"), item.bonusIds[i]);
-                profile += bonusId;
+                overrideItemLevel = currentSlotItem->itemLevel;
             }
         }
 
-        if (!item.gemIds.empty())
-        {
-            profile += _T(",gem_id=");
-            for (size_t i = 0; i < item.gemIds.size(); ++i)
-            {
-                if (i > 0) profile += _T("/");
-                CString gemId;
-                gemId.Format(_T("%u"), item.gemIds[i]);
-                profile += gemId;
-            }
-        }
-
-        if (item.enchantId > 0)
-        {
-            CString enchant;
-            enchant.Format(_T(",enchant_id=%u"), item.enchantId);
-            profile += enchant;
-        }
-
-        profile += _T("\n");
+        const CString slotName(static_cast<LPCWSTR>(CA2W(simcSlot.c_str())));
+        const CString tokenName(static_cast<LPCWSTR>(CA2W(overrideSelection->simcToken.c_str())));
+        AppendItemLine(profile, slotName, tokenName,
+            overrideSelection->itemId, overrideSelection->bonusIds, {}, 0, overrideSelection->contextId, overrideItemLevel);
     }
 
     profile += _T("name=");
@@ -305,4 +392,127 @@ void CCharacterData::CalculateItemLevelFromItems()
         for (const auto& item : m_items) { if (item.slot == ItemSlot::OFF_HAND && item.itemLevel > 0) { totalIlvl += item.itemLevel; count++; break; } }
     }
     if (count > 0) m_fItemLevel = totalIlvl / count;
+}
+
+const CCharacterData::ItemData* CCharacterData::FindItem(ItemSlot slot) const
+{
+    for (const auto& item : m_items)
+    {
+        if (item.slot == slot)
+        {
+            return &item;
+        }
+    }
+
+    return nullptr;
+}
+
+CString CCharacterData::DescribeItemSlot(ItemSlot slot) const
+{
+    const ItemData* item = FindItem(slot);
+    if (item == nullptr || item->id == 0)
+    {
+        return _T("현재 장착 정보 없음");
+    }
+
+    CString description;
+    if (item->itemLevel > 0.0)
+    {
+        description.Format(_T("현재 장착: id=%u, ilvl %.0f"), item->id, item->itemLevel);
+    }
+    else
+    {
+        description.Format(_T("현재 장착: id=%u"), item->id);
+    }
+
+    if (!item->bonusIds.empty())
+    {
+        description += _T(", bonus=");
+        description += JoinBonusIds(item->bonusIds);
+    }
+
+    if (item->contextId > 0)
+    {
+        CString context;
+        context.Format(_T(", context=%u"), item->contextId);
+        description += context;
+    }
+
+    return description;
+}
+
+void CCharacterData::SetTrinketOverride(const TrinketOverrideSelection& selection)
+{
+    if (selection.slot == ItemSlot::TRINKET1)
+    {
+        m_trinket1Override = selection;
+    }
+    else if (selection.slot == ItemSlot::TRINKET2)
+    {
+        m_trinket2Override = selection;
+    }
+}
+
+void CCharacterData::ClearTrinketOverride(ItemSlot slot)
+{
+    if (slot == ItemSlot::TRINKET1)
+    {
+        m_trinket1Override = TrinketOverrideSelection();
+        m_trinket1Override.slot = ItemSlot::TRINKET1;
+    }
+    else if (slot == ItemSlot::TRINKET2)
+    {
+        m_trinket2Override = TrinketOverrideSelection();
+        m_trinket2Override.slot = ItemSlot::TRINKET2;
+    }
+}
+
+const CCharacterData::TrinketOverrideSelection* CCharacterData::GetTrinketOverride(ItemSlot slot) const
+{
+    if (slot == ItemSlot::TRINKET1)
+    {
+        return &m_trinket1Override;
+    }
+
+    if (slot == ItemSlot::TRINKET2)
+    {
+        return &m_trinket2Override;
+    }
+
+    return nullptr;
+}
+
+BOOL CCharacterData::ValidateTrinketOverrides(CString& errorMessage) const
+{
+    const TrinketOverrideSelection* overrides[] = { &m_trinket1Override, &m_trinket2Override };
+    for (const TrinketOverrideSelection* overrideSelection : overrides)
+    {
+        if (!overrideSelection->enabled)
+        {
+            continue;
+        }
+
+        if (overrideSelection->itemId == 0 && overrideSelection->simcToken.empty())
+        {
+            errorMessage = _T("선택한 장신구의 SIMC 식별자가 없습니다.");
+            return FALSE;
+        }
+    }
+
+    if (m_trinket1Override.enabled && m_trinket2Override.enabled)
+    {
+        const bool sameId = m_trinket1Override.itemId != 0 &&
+            m_trinket1Override.itemId == m_trinket2Override.itemId;
+        const bool sameToken = m_trinket1Override.itemId == 0 && m_trinket2Override.itemId == 0 &&
+            !m_trinket1Override.simcToken.empty() &&
+            m_trinket1Override.simcToken == m_trinket2Override.simcToken;
+
+        if ((sameId || sameToken) && (m_trinket1Override.uniqueEquipped || m_trinket2Override.uniqueEquipped))
+        {
+            errorMessage = _T("중복 착용이 불가능한 장신구를 두 슬롯에 동시에 선택했습니다.");
+            return FALSE;
+        }
+    }
+
+    return TRUE;
 }

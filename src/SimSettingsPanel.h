@@ -1,5 +1,8 @@
 #pragma once
 
+class CCharacterData;
+struct CTrinketOption;
+
 // Simulation settings panel - allows user to configure simulation parameters
 class CSimSettingsPanel : public CFormView
 {
@@ -14,6 +17,7 @@ protected:
 #endif
 
     virtual void OnDraw(CDC* pDC) {}
+    afx_msg void OnSize(UINT nType, int cx, int cy);
 
 public:
     BOOL CreateView(CWnd* pParent, UINT nID, CCreateContext* pContext)
@@ -54,6 +58,28 @@ protected:
     CButton     m_checkOptimizeExpressions;
     CEdit       m_editScaleOnly;
     CEdit       m_editTargetError;
+    CStatic     m_staticTrinketHeader;
+    CStatic     m_staticTrinketFilterLabel;
+    CComboBox   m_comboTrinketFilter;
+    CButton     m_checkTrinket1;
+    CComboBox   m_comboTrinket1;
+    CStatic     m_staticTrinket1BonusLabel;
+    CEdit       m_editTrinket1BonusId;
+    CStatic     m_staticTrinket1ContextLabel;
+    CEdit       m_editTrinket1Context;
+    CStatic     m_staticTrinket1ItemLevelLabel;
+    CEdit       m_editTrinket1ItemLevel;
+    CStatic     m_staticTrinket1Info;
+    CButton     m_checkTrinket2;
+    CComboBox   m_comboTrinket2;
+    CStatic     m_staticTrinket2BonusLabel;
+    CEdit       m_editTrinket2BonusId;
+    CStatic     m_staticTrinket2ContextLabel;
+    CEdit       m_editTrinket2Context;
+    CStatic     m_staticTrinket2ItemLevelLabel;
+    CEdit       m_editTrinket2ItemLevel;
+    CStatic     m_staticTrinket2Info;
+    CStatic     m_staticTrinketStatus;
 
     // Data
     CString m_strFightStyle;
@@ -85,6 +111,14 @@ protected:
     BOOL    m_bOptimizeExpressions;
     CString m_strScaleOnly;
     double  m_dTargetError;
+    CString m_strTrinket1BonusId;
+    CString m_strTrinket2BonusId;
+    CString m_strTrinket1Context;
+    CString m_strTrinket2Context;
+    CString m_strTrinket1ItemLevel;
+    CString m_strTrinket2ItemLevel;
+    int     m_selectedTrinket1EntryId;
+    int     m_selectedTrinket2EntryId;
 
     DECLARE_MESSAGE_MAP()
 
@@ -96,6 +130,17 @@ public:
     afx_msg void OnEnChangeEditTargetError();
     afx_msg void OnCbnSelchangeComboTargets();
     afx_msg void OnBnClickedCheckBuffs();
+    afx_msg void OnBnClickedCheckTrinket1();
+    afx_msg void OnBnClickedCheckTrinket2();
+    afx_msg void OnCbnSelchangeComboTrinketFilter();
+    afx_msg void OnCbnSelchangeComboTrinket1();
+    afx_msg void OnCbnSelchangeComboTrinket2();
+    afx_msg void OnEnChangeEditTrinket1BonusId();
+    afx_msg void OnEnChangeEditTrinket2BonusId();
+    afx_msg void OnEnChangeEditTrinket1Context();
+    afx_msg void OnEnChangeEditTrinket2Context();
+    afx_msg void OnEnChangeEditTrinket1ItemLevel();
+    afx_msg void OnEnChangeEditTrinket2ItemLevel();
 
     // Getters for settings
     CString GetFightStyle() const { return m_strFightStyle; }
@@ -112,4 +157,14 @@ public:
     void LoadDefaults();
     void LoadSettingsFromManager();
     void SaveSettingsToManager();
+    BOOL ValidateTrinketInputs(CString& errorMessage) const;
+    void DisplayCharacterInfo(const CCharacterData* pCharData);
+    void PopulateTrinketCombos(BOOL preserveSelection = TRUE);
+    void ApplyTrinketOptionDefaults(int slotIndex, const CTrinketOption* option);
+    void LayoutTrinketControls(int panelWidth);
+    void UpdateTrinketControlState();
+    void UpdateTrinketSelectionSummary();
+    void SyncTrinketSelectionsToCharacterData(CCharacterData* pCharData) const;
+    int GetSelectedTrinketEntryId(const CComboBox& combo) const;
+    int GetSelectedFilterIndex() const;
 };

@@ -56,6 +56,17 @@ void CSettingsManager::LoadSettings()
     m_currentSettings.useSkyfury = pApp->GetProfileInt(_T("Settings"), _T("UseSkyfury"), 1);
     m_currentSettings.useHuntersMark = pApp->GetProfileInt(_T("Settings"), _T("UseHuntersMark"), 1);
     m_currentSettings.useBleeding = pApp->GetProfileInt(_T("Settings"), _T("UseBleeding"), 1);
+    m_currentSettings.useTrinket1Override = pApp->GetProfileInt(_T("Settings"), _T("UseTrinket1Override"), 0);
+    m_currentSettings.useTrinket2Override = pApp->GetProfileInt(_T("Settings"), _T("UseTrinket2Override"), 0);
+    m_currentSettings.trinketFilterIndex = pApp->GetProfileInt(_T("Settings"), _T("TrinketFilterIndex"), 0);
+    m_currentSettings.trinket1EntryId = pApp->GetProfileInt(_T("Settings"), _T("Trinket1EntryId"), 0);
+    m_currentSettings.trinket2EntryId = pApp->GetProfileInt(_T("Settings"), _T("Trinket2EntryId"), 0);
+    m_currentSettings.trinket1BonusId = pApp->GetProfileString(_T("Settings"), _T("Trinket1BonusId"), _T(""));
+    m_currentSettings.trinket2BonusId = pApp->GetProfileString(_T("Settings"), _T("Trinket2BonusId"), _T(""));
+    m_currentSettings.trinket1Context = pApp->GetProfileString(_T("Settings"), _T("Trinket1Context"), _T(""));
+    m_currentSettings.trinket2Context = pApp->GetProfileString(_T("Settings"), _T("Trinket2Context"), _T(""));
+    m_currentSettings.trinket1ItemLevel = pApp->GetProfileString(_T("Settings"), _T("Trinket1ItemLevel"), _T(""));
+    m_currentSettings.trinket2ItemLevel = pApp->GetProfileString(_T("Settings"), _T("Trinket2ItemLevel"), _T(""));
     
     m_currentSettings.reportDetails = pApp->GetProfileInt(_T("Settings"), _T("ReportDetails"), 1);
     m_currentSettings.calculateScaleFactors = pApp->GetProfileInt(_T("Settings"), _T("CalculateScaleFactors"), 0);
@@ -89,6 +100,17 @@ void CSettingsManager::SaveSettings() const
     pApp->WriteProfileInt(_T("Settings"), _T("UseSkyfury"), m_currentSettings.useSkyfury);
     pApp->WriteProfileInt(_T("Settings"), _T("UseHuntersMark"), m_currentSettings.useHuntersMark);
     pApp->WriteProfileInt(_T("Settings"), _T("UseBleeding"), m_currentSettings.useBleeding);
+    pApp->WriteProfileInt(_T("Settings"), _T("UseTrinket1Override"), m_currentSettings.useTrinket1Override);
+    pApp->WriteProfileInt(_T("Settings"), _T("UseTrinket2Override"), m_currentSettings.useTrinket2Override);
+    pApp->WriteProfileInt(_T("Settings"), _T("TrinketFilterIndex"), m_currentSettings.trinketFilterIndex);
+    pApp->WriteProfileInt(_T("Settings"), _T("Trinket1EntryId"), m_currentSettings.trinket1EntryId);
+    pApp->WriteProfileInt(_T("Settings"), _T("Trinket2EntryId"), m_currentSettings.trinket2EntryId);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket1BonusId"), m_currentSettings.trinket1BonusId);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket2BonusId"), m_currentSettings.trinket2BonusId);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket1Context"), m_currentSettings.trinket1Context);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket2Context"), m_currentSettings.trinket2Context);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket1ItemLevel"), m_currentSettings.trinket1ItemLevel);
+    pApp->WriteProfileString(_T("Settings"), _T("Trinket2ItemLevel"), m_currentSettings.trinket2ItemLevel);
     
     pApp->WriteProfileInt(_T("Settings"), _T("ReportDetails"), m_currentSettings.reportDetails);
     pApp->WriteProfileInt(_T("Settings"), _T("CalculateScaleFactors"), m_currentSettings.calculateScaleFactors);
